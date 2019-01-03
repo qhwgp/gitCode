@@ -7,12 +7,31 @@ version git1.0
 
 import time,csv,datetime,xlrd,os
 from WindPy import w
-#import pandas as pd
+import pandas as pd
 import numpy as np
 
 #--------------Function Start-----------------
 
-def getWindPastAveAmnt(nday,listCode,strSDay,strEDay=''):
+def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
+    if w.isconnected()==False:
+        msg=w.start(waitTime=15)
+        if msg.ErrorCode!=0:
+            return False
+    msg=w.tdaysoffset(-nday, strSDay, "")
+    if msg.ErrorCode!=0:
+        return False
+    amntSDay=msg.Data[0][0].strftime('%Y%m%d')
+    strCode=','.join(listCode)
+    amntEDay=''
+    if strEDay!='':
+        amntEDay=strEDay
+    msg=w.wsd(strCode, 'amt', amntSDay, amntEDay, "")
+    if msg.ErrorCode!=0:
+        return False
+    return pd.DataFrame(np.array(msg.Data).T,index=msg.Times,columns=msg.Codes)
+
+def getPastAveAmnt(pdData,nday,listCode,strSDay,strEDay=''):
+    """
     if w.isconnected()==False:
         msg=w.start(waitTime=15)
         if msg.ErrorCode!=0:
@@ -28,14 +47,15 @@ def getWindPastAveAmnt(nday,listCode,strSDay,strEDay=''):
     msg=w.wsd(strCode, 'amt', amntSDay, amntEDay, "")
     if msg.ErrorCode!=0:
         return False
-    amntData=msg.Data
-    amntTimes=msg.Times
-    amntCodes=msg.Codes
+    """
+    amntData=list(pdData.T.values)
+    amntTimes=list(pdData.index)
+    amntCodes=list(pdData.columns)
     if len(amntTimes)<=nday:
         return False
     dictPastAveAmnt={}
     for iday in range(nday,len(amntTimes)):
-        strDay=amntTimes[iday].strftime('%Y%m%d')
+        strDay=amntTimes[iday].replace('-','')
         dictdailyPastAveAmnt={}
         for icode in range(len(amntCodes)):
             code=amntCodes[icode]
@@ -132,10 +152,13 @@ def intToTime(longInt):
         tsec=int(temp+0.1)
         return datetime.datetime(1900, 1, 1, thour, tmin, tsec)
     
+def intToDate(intDate):
+    return datetime.datetime.strptime(str(intDate),'%Y%m%d')
+    
 def CheckRawData(rawData):
     if len(rawData)<100:
         return 1
-    
+    pass
     return 0
     
 def tickToStdData(rawTickData,ListtimeSE,secTimeDiff):
@@ -223,13 +246,13 @@ class AIHFIF:
         self.minuteYData=int(arrCfg[6]+0.01)
         return
     
-    def updateStdData(self,startDate=0):
+    def updateStdData(self,intStartDate=0):
         mainOutPath=os.path.join(self.workPath,'StandardData',str(int(self.timeSpan))+'_sec_span')
         pathList = os.listdir(self.rawDataPath)
         listCode=list(self.dictCodeInfo.keys())
         listCode.append(self.indexCode)
         for path in pathList:
-            if int(path)<startDate:
+            if int(path)<intStartDate:
                 continue
             datePath=os.path.join(self.rawDataPath,path)
             for code in listCode:
@@ -248,6 +271,31 @@ class AIHFIF:
                     if not os.path.exists(OutFile):
                         listToCsv(listStdData[i],OutFile)
         return
+    
+    def updateWindDailyAmntData(self,strSDate='19000101'):
+        dataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
+        listRawDataDate=os.listdir(self.rawDataPath)
+        startDate=listRawDataDate[0]
+        if int(strSDate)>int(startDate):
+            startDate=strSDate
+        listCode=list(self.dictCodeInfo.keys())
+        nday=self.nDayAverage
+        """
+        needUpdateAll=True
+        if os.path.exists(dataFile):
+            pdData=pd.read_csv(dataFile,header=0,index_col=0)
+            listPdDataDate=list(pdData.index)
+            if len(listPdDataDate)>nday+1:
+                startListDay=listPdDataDate[nday].replace('-','')
+                if startDate>startListDay:
+                    if set(pdData.columns)<set(listCode):
+                        needUpdateAll=False
+                        
+        if needUpdateAll:
+            """
+        pdData=getPdWIndAmnt(nday,listCode,startDate)
+        pdData.to_csv(dataFile)
+        return pdData
     
     def calInduData(self,strSDate='19000101',strEDate=''):
         #get or set outpath
@@ -270,7 +318,9 @@ class AIHFIF:
                 eDate=endDate
         #past nday's average amount
         listCode=list(self.dictCodeInfo.keys())
-        dictPastAveAmnt=getWindPastAveAmnt(self.nDayAverage,listCode,
+        pdDataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
+        pdData=pd.read_csv(pdDataFile,header=0,index_col=0)
+        dictPastAveAmnt=getPastAveAmnt(pdData,self.nDayAverage,listCode,
                                            sDate,eDate)
         #indu data
         for strDate in listDate:
@@ -315,5 +365,6 @@ if __name__=='__main__':
     startDate='20181220'#datetime.datetime(2018,12,20)
     endDate='20181221'#datetime.datetime(2018,12,21)
     tf=HFIF_Model.calInduData()
+    #pdData=HFIF_Model.updateWindDailyAmntData()
     
     print('Running Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
