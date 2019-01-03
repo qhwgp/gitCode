@@ -4,7 +4,14 @@ cd /F/草稿/gitCode
 git init
 ssh-keygen -t rsa -C "qhwgp@163"
 git clone git@github.com:qhwgp/gitCode.git
+
 git add symbolList.txt
+git add gitCommand.txt
+git add gitLearn.txt
+
 git commit -m "modify in other place"
+git commit -m "add some file"
+
+
 git status
 git push -u origin master
