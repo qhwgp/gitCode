@@ -12,6 +12,11 @@ git add gitLearn.txt
 git commit -m "modify in other place"
 git commit -m "add some file"
 
+git checkout -- gitCommand.txt
+git reset HEAD gitCommand.txt
+
+git rm test.txt
 
 git status
+git remote add origin git@github.com:qhwgp/gitCode.git
 git push -u origin master

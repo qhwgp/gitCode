@@ -7,7 +7,7 @@ version git1.0
 
 import time,csv,datetime,xlrd,os
 from WindPy import w
-#import pandas as pd
+import pandas as pd
 import numpy as np
 
 #--------------Function Start-----------------
