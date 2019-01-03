@@ -1,0 +1,22 @@
+git add <file> (添加，更新）
+git commit -m <message>
+git status
+git diff <file>
+git log --pretty=oneline
+
+Your identification has been saved in /c/Users/WGP/.ssh/id_rsa.
+Your public key has been saved in /c/Users/WGP/.ssh/id_rsa.pub.
+The key fingerprint is:
+SHA256:qWROiTW3Xq3wkMKbcq9Pzt7luuABSeWAG2TnOxzrSVo qhwgp@163
+The key's randomart image is:
++---[RSA 2048]----+
+|   .o.o .        |
+|   .oo +         |
+|     o* o        |
+|    .* O + .     |
+|    . E S . .    |
+|     X X = .     |
+|    o O = o .    |
+|     o * + o     |
+|      .+B +o.    |
++----[SHA256]-----+
