@@ -17,7 +17,7 @@ def pushPath(gitPath,strUpdateInfo):
         for strInfo in listStatus:
             if '\t' in strInfo:
                 fileList.append(strInfo.replace('\t','').replace('modified:   ',''))
-    if len(fileList)>0:
+    if fileList:
         repo.index.add(fileList)
         repo.index.commit(strUpdateInfo)
         repo.remote().push()
