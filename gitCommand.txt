@@ -1,13 +1,11 @@
 git config --global user.name "qhwgp"
 git config --global user.email "qhwgp@163.com"
-cd /F/草稿/gitCode
+cd /F/草稿/gitCode/gitCode
 git init
 ssh-keygen -t rsa -C "qhwgp@163"
 git clone git@github.com:qhwgp/gitCode.git
 
-git add symbolList.txt
-git add gitCommand.txt
-git add gitLearn.txt
+
 
 git commit -m "modify in other place"
 git commit -m "add some file"
@@ -19,4 +17,10 @@ git rm test.txt
 
 git status
 git remote add origin git@github.com:qhwgp/gitCode.git
+
+cd /F/草稿/gitCode/gitCode
+git pull git@github.com:qhwgp/gitCode.git
+git add symbolList.txt
+git add gitCommand.txt
+git add gitLearn.txt
 git push -u origin master
