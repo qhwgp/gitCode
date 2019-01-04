@@ -7,7 +7,9 @@ Created on Fri Jan  4 09:02:36 2019
 
 import git
 
-
+def pullPath(gitPath):
+    repo = git.Repo(gitPath)
+    repo.remote().pull()
 
 def pushPath(gitPath,strUpdateInfo):
     repo = git.Repo(gitPath)
@@ -26,6 +28,13 @@ def pushPath(gitPath,strUpdateInfo):
 if __name__=='__main__':
     #Work Computer Path
     gitPath='F:/草稿/gitCode/gitCode'
-    fileList=pushPath(gitPath,'test OK for use')
     
+    strUpdateInfo='add pull'
+    
+     
+    fileList=pushPath(gitPath,'test OK for use')
     print('push to gitHub OK.')
+    """
+    pullPath(gitPath)
+    print('pull from gitHub OK.')
+    """
