@@ -23,5 +23,6 @@ def pushPath(gitPath,strUpdateInfo):
     return fileList
     
 if __name__=='__main__':
+    #Work Computer Path
     gitPath='F:/草稿/gitCode/gitCode'
-    fileList=pushPath(gitPath,'test for giPython')
+    fileList=pushPath(gitPath,'test OK for use')
