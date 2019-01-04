@@ -29,7 +29,7 @@ if __name__=='__main__':
     #Work Computer Path
     gitPath='F:/草稿/gitCode/gitCode'
     
-    strUpdateInfo='add pull'
+    strUpdateInfo='add tdb'
     
      
     fileList=pushPath(gitPath,strUpdateInfo)
