@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sat Dec 29 14:15:04 2018
-version git1.0
+version git1.1
 @author: wap
 """
 
