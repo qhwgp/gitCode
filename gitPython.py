@@ -32,7 +32,7 @@ if __name__=='__main__':
     strUpdateInfo='add pull'
     
      
-    fileList=pushPath(gitPath,'test OK for use')
+    fileList=pushPath(gitPath,strUpdateInfo)
     print('push to gitHub OK.')
     """
     pullPath(gitPath)
