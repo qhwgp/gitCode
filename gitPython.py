@@ -26,3 +26,5 @@ if __name__=='__main__':
     #Work Computer Path
     gitPath='F:/草稿/gitCode/gitCode'
     fileList=pushPath(gitPath,'test OK for use')
+    
+    print('push to gitHub OK.')
