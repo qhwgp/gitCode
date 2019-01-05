@@ -10,7 +10,58 @@ from WindPy import w
 import pandas as pd
 import numpy as np
 
-#--------------Function Start-----------------
+#--------------Basic function start-----------
+
+def csvToList(csvFile):
+    resultList=[]
+    with open(csvFile, mode='r') as f:
+        csvReader = csv.reader(f)
+        for row in csvReader:
+            resultList.append(list(map(eval,row)))
+    return resultList
+
+def listToCsv(listData,csvFilePath):
+    with open(csvFilePath, mode='w', newline='') as f:
+        csvwriter = csv.writer(f)
+        for row in listData:
+            csvwriter.writerow(row)
+
+def intToTime(longInt):
+    if longInt>240000000:
+        return datetime.datetime(1900, 1, 1, 23, 59, 59)
+    elif longInt<1000000:
+        return datetime.datetime(1900, 1, 1, 0, 0, 0)
+    else:
+        temp=longInt/10000000
+        thour=int(temp)
+        temp=(temp-thour)*100
+        tmin=int(temp+0.1)
+        temp=(temp-tmin)*100
+        tsec=int(temp+0.1)
+        return datetime.datetime(1900, 1, 1, thour, tmin, tsec)
+    
+def intToDate(intDate):
+    return datetime.datetime.strptime(str(intDate),'%Y%m%d')
+
+def strToDate(strDate):
+    return datetime.datetime.strptime(strDate,'%Y%m%d')
+
+def calPercentile(xValue,arrPercentile): #len(arrPercentile)=100,upscane
+    isfind=False
+    abv=abs(xValue)
+    for i in range(100):
+        if abv<(arrPercentile[i]+0.0001):
+            isfind=True
+            break
+    if isfind:
+        result=i/100
+    else:
+        result=1
+    return result*np.sign(xValue)
+
+#--------------Basic function end-------------
+
+#--------------Functionality Start------------
 
 def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
     if w.isconnected()==False:
@@ -31,23 +82,6 @@ def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
     return pd.DataFrame(np.array(msg.Data).T,index=msg.Times,columns=msg.Codes)
 
 def getPastAveAmnt(pdData,nday,listCode,strSDay,strEDay=''):
-    """
-    if w.isconnected()==False:
-        msg=w.start(waitTime=15)
-        if msg.ErrorCode!=0:
-            return False
-    msg=w.tdaysoffset(-nday, strSDay.strftime('%Y-%m-%d'), "")
-    if msg.ErrorCode!=0:
-        return False
-    amntSDay=msg.Data[0][0].strftime('%Y-%m-%d')
-    strCode=','.join(listCode)
-    amntEDay=''
-    if strEDay!='':
-        amntEDay=strEDay.strftime('%Y-%m-%d')
-    msg=w.wsd(strCode, 'amt', amntSDay, amntEDay, "")
-    if msg.ErrorCode!=0:
-        return False
-    """
     amntData=list(pdData.T.values)
     amntTimes=list(pdData.index)
     amntCodes=list(pdData.columns)
@@ -73,48 +107,6 @@ def getPastAveAmnt(pdData,nday,listCode,strSDay,strEDay=''):
         dictPastAveAmnt[strDay]=dictdailyPastAveAmnt
     return dictPastAveAmnt
 
-def getDailyInduData(dictPartStdData,dictCodeInfo,dictdailyPastAveAmnt,timeSpan):
-    arrIndu=np.array(list(dictCodeInfo.values()))[:,1]
-    maxNIndu=int(np.max(arrIndu)+0.1)
-    minNIndu=int(np.min(arrIndu)+0.1)
-    nIndu=maxNIndu-minNIndu+1
-    for listStdData in dictPartStdData.values():
-        lenStdData=len(listStdData)
-        break
-    npDailyInduData=np.zeros([lenStdData,nIndu*2])
-    npAveTSpanAmnt=np.zeros(nIndu)
-    for code,weiIndu in dictCodeInfo.items():
-        if not code in dictPartStdData.keys():
-            continue
-        wei=weiIndu[0]
-        intIndu=int(weiIndu[1]+0.1)
-        arrStdData=np.array(dictPartStdData[code])
-        aveAmnt=dictdailyPastAveAmnt[code]
-        #industry index cal
-        npDailyInduData[:,2*(intIndu-minNIndu)]=npDailyInduData[:,
-            2*(intIndu-minNIndu)]+wei*arrStdData[:,0]
-        #industry amnt cal
-        npDailyInduData[:,2*(intIndu-minNIndu)+1]=npDailyInduData[:,
-            2*(intIndu-minNIndu)+1]+arrStdData[:,1]
-        #industry average amnt cal
-        npAveTSpanAmnt[intIndu-minNIndu]=npAveTSpanAmnt[intIndu-minNIndu]+aveAmnt
-    #index->return,norm amnt
-    npAveTSpanAmnt=npAveTSpanAmnt/(14400/timeSpan)
-    for i in range(nIndu):
-        npDailyInduData[1:,2*i]=(npDailyInduData[1:,
-                2*i]/npDailyInduData[:-1,2*i]-1)*10000
-        npDailyInduData[:,2*i+1]=npDailyInduData[:,2*i+1]/npAveTSpanAmnt[i]
-    npDailyInduData=npDailyInduData[1:,:]
-    return npDailyInduData
-
-def csvToList(csvFile):
-    resultList=[]
-    with open(csvFile, mode='r') as f:
-        csvReader = csv.reader(f)
-        for row in csvReader:
-            resultList.append(list(map(eval,row)))
-    return resultList
-
 def getDictStdData(nStdDataPath,listCode):
     dictStdData={}
     lenCode=len(listCode[0])
@@ -129,38 +121,18 @@ def getDictStdData(nStdDataPath,listCode):
             dictStdData[tFlag][code]=csvToList(csvFile)
     return dictStdData
 
-def listToCsv(listData,csvFilePath):
-    #try:
-    with open(csvFilePath, mode='w', newline='') as f:
-        csvwriter = csv.writer(f)
-        for row in listData:
-            csvwriter.writerow(row)
-    #    return True
-    #except:
-    #    return False
-def intToTime(longInt):
-    if longInt>240000000:
-        return datetime.datetime(1900, 1, 1, 23, 59, 59)
-    elif longInt<1000000:
-        return datetime.datetime(1900, 1, 1, 0, 0, 0)
-    else:
-        temp=longInt/10000000
-        thour=int(temp)
-        temp=(temp-thour)*100
-        tmin=int(temp+0.1)
-        temp=(temp-tmin)*100
-        tsec=int(temp+0.1)
-        return datetime.datetime(1900, 1, 1, thour, tmin, tsec)
-    
-def intToDate(intDate):
-    return datetime.datetime.strptime(str(intDate),'%Y%m%d')
-    
+#--------------Functionality end--------------
+
+#----------Model step function start----------
+
+#step 0
 def CheckRawData(rawData):
     if len(rawData)<100:
         return 1
     pass
     return 0
-    
+
+#step 1
 def tickToStdData(rawTickData,ListtimeSE,secTimeDiff):
     """
     morningStart = datetime.datetime(1900, 1, 1, 9, 40, 0)
@@ -195,12 +167,67 @@ def tickToStdData(rawTickData,ListtimeSE,secTimeDiff):
                 nRawData+=1
             stdData.append([lprice,amnt])
         listStdData.append(stdData)
-            
     return listStdData
-    
-#--------------Function End-----------------
 
-#--------------Build HFIF Model Class-------
+#step 2
+def getDailyInduData(dictPartStdData,dictCodeInfo,dictdailyPastAveAmnt,timeSpan):
+    arrIndu=np.array(list(dictCodeInfo.values()))[:,1]
+    maxNIndu=int(np.max(arrIndu)+0.1)
+    minNIndu=int(np.min(arrIndu)+0.1)
+    nIndu=maxNIndu-minNIndu+1
+    for listStdData in dictPartStdData.values():
+        lenStdData=len(listStdData)
+        break
+    npDailyInduData=np.zeros([lenStdData,nIndu*2])
+    npAveTSpanAmnt=np.zeros(nIndu)
+    for code,weiIndu in dictCodeInfo.items():
+        if not code in dictPartStdData.keys():
+            continue
+        wei=weiIndu[0]
+        intIndu=int(weiIndu[1]+0.1)
+        arrStdData=np.array(dictPartStdData[code])
+        aveAmnt=dictdailyPastAveAmnt[code]
+        #industry index cal
+        npDailyInduData[:,2*(intIndu-minNIndu)]=npDailyInduData[:,
+            2*(intIndu-minNIndu)]+wei*arrStdData[:,0]
+        #industry amnt cal
+        npDailyInduData[:,2*(intIndu-minNIndu)+1]=npDailyInduData[:,
+            2*(intIndu-minNIndu)+1]+arrStdData[:,1]
+        #industry average amnt cal
+        npAveTSpanAmnt[intIndu-minNIndu]=npAveTSpanAmnt[intIndu-minNIndu]+aveAmnt
+    #index->return,norm amnt
+    npAveTSpanAmnt=npAveTSpanAmnt/(14400/timeSpan)
+    for i in range(nIndu):
+        npDailyInduData[1:,2*i]=(npDailyInduData[1:,
+                2*i]/npDailyInduData[:-1,2*i]-1)*10000
+        npDailyInduData[:,2*i+1]=npDailyInduData[:,2*i+1]/npAveTSpanAmnt[i]
+    npDailyInduData=npDailyInduData[1:,:]
+    return npDailyInduData
+
+#step3
+def getDailyTensorData(npDailyInduData,indexData,nx,ny):
+    xData=[]
+    yData=[]
+    for i in range(nx,len(indexData)-ny):
+        xData.append(npDailyInduData[(i-nx):(i-1),:])
+        yData.append((indexData[i+ny]/indexData[i]-1)*10000/ny)
+    xData=np.array(xData)
+    yData=np.array(yData)
+    return xData,yData
+
+#step3
+def getNormInduData(xData,pclMatrix):
+    xShape=xData.shape
+    normInduData=np.zeros(xShape)
+    for j in range(xShape[1]):
+        arrPercentile=pclMatrix[:,j]
+        for i in range(xShape[0]):
+            normInduData[i,j]=calPercentile(xData[i,j],arrPercentile)
+    return normInduData
+
+#----------Model step function end------------
+
+#-----------Build HFIF Model Class------------
 
 class AIHFIF:
     def __init__(self,workPath,cfgFile):
@@ -224,7 +251,6 @@ class AIHFIF:
         self.log=''
         self._getCfg()
         
-        
     def _getCfg(self):
         data = xlrd.open_workbook(cfgFile)
         #page1
@@ -244,13 +270,14 @@ class AIHFIF:
         self.nDayAverage=int(arrCfg[4]+0.01)
         self.minuteXData=int(arrCfg[5]+0.01)
         self.minuteYData=int(arrCfg[6]+0.01)
-        return
     
     def updateStdData(self,intStartDate=0):
+        print('Start updateStdData...')
         mainOutPath=os.path.join(self.workPath,'StandardData',str(int(self.timeSpan))+'_sec_span')
         pathList = os.listdir(self.rawDataPath)
         listCode=list(self.dictCodeInfo.keys())
         listCode.append(self.indexCode)
+        listStdData=[]
         for path in pathList:
             if int(path)<intStartDate:
                 continue
@@ -270,9 +297,10 @@ class AIHFIF:
                     OutFile=os.path.join(outPath,code+'_'+str(i)+'.csv')
                     if not os.path.exists(OutFile):
                         listToCsv(listStdData[i],OutFile)
-        return
+        #return listStdData
     
     def updateWindDailyAmntData(self,strSDate='19000101'):
+        print('Start updateWindDailyAmntData...')
         dataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
         listRawDataDate=os.listdir(self.rawDataPath)
         startDate=listRawDataDate[0]
@@ -280,24 +308,12 @@ class AIHFIF:
             startDate=strSDate
         listCode=list(self.dictCodeInfo.keys())
         nday=self.nDayAverage
-        """
-        needUpdateAll=True
-        if os.path.exists(dataFile):
-            pdData=pd.read_csv(dataFile,header=0,index_col=0)
-            listPdDataDate=list(pdData.index)
-            if len(listPdDataDate)>nday+1:
-                startListDay=listPdDataDate[nday].replace('-','')
-                if startDate>startListDay:
-                    if set(pdData.columns)<set(listCode):
-                        needUpdateAll=False
-                        
-        if needUpdateAll:
-            """
         pdData=getPdWIndAmnt(nday,listCode,startDate)
         pdData.to_csv(dataFile)
-        return pdData
+        #return pdData
     
     def calInduData(self,strSDate='19000101',strEDate=''):
+        print('Start calInduData...')
         #get or set outpath
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
@@ -338,33 +354,56 @@ class AIHFIF:
                 npDInduData=getDailyInduData(dictPartStdData,
                       self.dictCodeInfo,dictPastAveAmnt[strDate],self.timeSpan)
                 
-                np.savetxt(induDataFile,npDInduData,delimiter=',')
-        return True
+                np.savetxt(induDataFile,npDInduData,fmt="%.2f",delimiter=',')
+        return npDInduData
+    
+    def calTensorData(self,strSDate='19000101',strEDate=''):
+        print('Start calTensorData...')
+        #get or set outpath
+        (filepath,tempfilename) = os.path.split(self.cfgFile)
+        (filename,extension) = os.path.splitext(tempfilename)
+        induDataPath=os.path.join(self.workPath,'induData',filename)
+        listInduDataFile=os.listdir(induDataPath)
+        nx=int(self.minuteXData*60/self.timeSpan+0.1)
+        ny=int(self.minuteYData*60/self.timeSpan+0.1)
+        xData=np.array([])
+        for induDataFile in listInduDataFile:
+            fpath=os.path.join(induDataPath,induDataFile)
+            (filename,extension) = os.path.splitext(induDataFile)
+            nameInfo=filename.split('_')
+            npxData=np.loadtxt(fpath,delimiter=',')
+            yFilePath=os.path.join(self.workPath,'StandardData',
+                str(int(self.timeSpan))+'_sec_span',nameInfo[0],
+                self.indexCode+'_'+nameInfo[1]+'.csv')
+            npyData=np.loadtxt(yFilePath,delimiter=',')
+            npyData=npyData[1:,0]
+            npyData=(np.hstack((npyData,np.zeros(ny)))[ny:]/npyData-1)*10000
+            npxData=np.hstack((npxData,npyData.reshape((-1,1))))
+            if xData.size==0:
+                xData=npxData
+            else:
+                xData=np.vstack((xData,npxData))
+        pclMatrix=np.percentile(np.abs(xData),range(100),axis=0)
+        xNormData=getNormInduData(xData,pclMatrix)
+        return xNormData
+    
+    def collectAllData(self):
+        self.updateStdData()
+        self.updateWindDailyAmntData()
+        self.calInduData()
         
 #---------------Build HFIF Model End--------
 
 if __name__=='__main__':
     gtime = time.time()
     print('Start Running...')
-    
-    """
-    csvFilePath="F:\\文档\\data\\ListData\\tickData\\20181227\\600000.SH.csv"
-    resultList=csvToList(csvFilePath)
-    
-    writeFilePath="F:\\文档\\data\\ListData\\test.csv"
-    tf=listToCsv(resultList,writeFilePath)
-    
-    longInt=resultList[2][0]
-    mytimt=intToTime(longInt)
-    """
+    #build up
     workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
     cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
-    #tf=HFIF_Model.updateStdData(20181127)
-    startDate='20181220'#datetime.datetime(2018,12,20)
-    endDate='20181221'#datetime.datetime(2018,12,21)
-    tf=HFIF_Model.calInduData()
-    #pdData=HFIF_Model.updateWindDailyAmntData()
+    #collect data
+    #HFIF_Model.collectAllData
+    xNormData=HFIF_Model.calTensorData()
     
     print('Running Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
