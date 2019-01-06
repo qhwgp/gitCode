@@ -31,7 +31,7 @@ if __name__=='__main__':
     #gitPath='F:/草稿/gitCode/gitCode'
     gitPath='C:/Users/WAP/gitCode'
     
-    strUpdateInfo='add tensor'
+    strUpdateInfo='add model test'
     
      
     fileList=pushPath(gitPath,strUpdateInfo)

@@ -5,8 +5,9 @@ version git1.1
 @author: wap
 """
 
-import time,csv,datetime,xlrd,os
-from WindPy import w
+import time,csv,datetime,xlrd,os,math
+from keras.models import Sequential
+from keras.layers import Activation,Dense,GRU
 import pandas as pd
 import numpy as np
 
@@ -59,11 +60,70 @@ def calPercentile(xValue,arrPercentile): #len(arrPercentile)=100,upscane
         result=1
     return result*np.sign(xValue)
 
+def buildRNNModel(data_x,data_y,arrGRU=0,arrDense=0,actFlag='tanh'):
+    model = Sequential()
+    xShape=data_x[0].shape
+    if arrGRU==0:
+        arrGRU=int(math.sqrt(xShape[0]*xShape[1]))
+    if arrDense==0:
+        arrDense=int(arrGRU*0.6)
+    if type(arrGRU)!=list:
+        arrGRU=[arrGRU]
+    if type(arrDense)!=list:
+        arrDense=[arrDense]
+    nGRU=len(arrGRU)
+    isrese=False
+    if nGRU>1:
+        isrese=True
+    model.add(GRU(arrGRU[0],input_shape=xShape,
+                  return_sequences=isrese))
+    model.add(Activation(actFlag))
+    for n in range(1,nGRU):
+        if n==nGRU-1:
+            isrese=False
+        model.add(GRU(arrGRU[n],return_sequences=isrese))
+        model.add(Activation(actFlag))
+    for n in range(len(arrDense)):
+        model.add(Dense(arrDense[n]))
+        model.add(Activation(actFlag))
+    model.add(Dense(1))
+    model.compile(loss="mse", optimizer="rmsprop",metrics=['accuracy'])
+    r = np.random.permutation(len(data_x)) #shuffle
+    sdata_x=data_x[r,:]
+    sdata_y=data_y[r]
+    print('Start fit RNN Model...')
+    model.fit(sdata_x,sdata_y,batch_size=128,epochs=1,validation_split=0.05)
+    return model
+
+def RNNTest(model,x_test,y_test,testRatePercent=80,judgeRight=0.01):
+    predicted = model.predict(x_test).reshape(-1)
+    pcl=np.percentile(np.abs(predicted),range((100-testRatePercent),100))
+    arrSumValue=np.zeros([testRatePercent,2])
+    arrSumRight=np.zeros([testRatePercent,2])
+    arrSumN=np.zeros([testRatePercent,2])
+    for idata in range(len(predicted)):
+        for itrp in range(testRatePercent):
+            if predicted[idata]>pcl[itrp]:
+                arrSumN[itrp,0]+=1
+                if y_test[idata]>judgeRight:
+                    arrSumRight[itrp,0]+=1
+                    arrSumValue[itrp,0]+=y_test[idata]
+            if predicted[idata]<-pcl[itrp]:
+                arrSumN[itrp,1]+=1
+                if y_test[idata]<-judgeRight:
+                    arrSumRight[itrp,1]+=1
+                    arrSumValue[itrp,1]+=y_test[idata]
+    arrPredictValue=arrSumValue/arrSumN
+    arrRightRate=arrSumRight/arrSumN
+    return np.hstack((arrPredictValue,arrRightRate))
+        
+
 #--------------Basic function end-------------
 
 #--------------Functionality Start------------
 
 def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
+    from WindPy import w
     if w.isconnected()==False:
         msg=w.start(waitTime=15)
         if msg.ErrorCode!=0:
@@ -357,7 +417,7 @@ class AIHFIF:
                 np.savetxt(induDataFile,npDInduData,fmt="%.2f",delimiter=',')
         return npDInduData
     
-    def calTensorData(self,strSDate='19000101',strEDate=''):
+    def calTensorData(self,pclMatrix=[],strStartDate='0',strEndDate='99999999'):
         print('Start calTensorData...')
         #get or set outpath
         (filepath,tempfilename) = os.path.split(self.cfgFile)
@@ -367,25 +427,39 @@ class AIHFIF:
         nx=int(self.minuteXData*60/self.timeSpan+0.1)
         ny=int(self.minuteYData*60/self.timeSpan+0.1)
         xData=np.array([])
+        intSDate=int(strStartDate)
+        intEDate=int(strEndDate)
         for induDataFile in listInduDataFile:
             fpath=os.path.join(induDataPath,induDataFile)
             (filename,extension) = os.path.splitext(induDataFile)
             nameInfo=filename.split('_')
-            npxData=np.loadtxt(fpath,delimiter=',')
+            intDate=int(nameInfo[0])
+            if intDate<intSDate or intDate>intEDate:
+                continue
+            npxData=np.loadtxt(fpath,delimiter=',')[:-ny]
             yFilePath=os.path.join(self.workPath,'StandardData',
                 str(int(self.timeSpan))+'_sec_span',nameInfo[0],
                 self.indexCode+'_'+nameInfo[1]+'.csv')
-            npyData=np.loadtxt(yFilePath,delimiter=',')
-            npyData=npyData[1:,0]
-            npyData=(np.hstack((npyData,np.zeros(ny)))[ny:]/npyData-1)*10000
+            npyData=np.loadtxt(yFilePath,delimiter=',')[1:,0]
+            npyData=(npyData[ny:]/npyData[:-ny]-1)*10000
             npxData=np.hstack((npxData,npyData.reshape((-1,1))))
             if xData.size==0:
                 xData=npxData
+                nDailyData=npxData.shape[0]
             else:
                 xData=np.vstack((xData,npxData))
-        pclMatrix=np.percentile(np.abs(xData),range(100),axis=0)
+        if len(pclMatrix)==0:
+            pclMatrix=np.percentile(np.abs(xData),range(100),axis=0)
         xNormData=getNormInduData(xData,pclMatrix)
-        return xNormData
+        ndday=int(xNormData.shape[0]/nDailyData)
+        xData=[]
+        yData=[]
+        for idday in range(ndday):
+            for i in range(nx,nDailyData):
+                n=(idday-1)*nDailyData+i
+                xData.append(xNormData[(n-nx):n,:-1])
+                yData.append(xNormData[n,-1])
+        return (np.array(xData),np.array(yData),pclMatrix)
     
     def collectAllData(self):
         self.updateStdData()
@@ -396,6 +470,7 @@ class AIHFIF:
 
 if __name__=='__main__':
     gtime = time.time()
+    np.seterr(divide='ignore',invalid='ignore')
     print('Start Running...')
     #build up
     workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
@@ -404,6 +479,9 @@ if __name__=='__main__':
     dictCodeInfo=HFIF_Model.dictCodeInfo
     #collect data
     #HFIF_Model.collectAllData
-    xNormData=HFIF_Model.calTensorData()
+    (xTrain,yTrain,pcl)=HFIF_Model.calTensorData(strEndDate='20190102')
+    RNNModel=buildRNNModel(xTrain,yTrain)
+    (xTest,yTest,pcl)=HFIF_Model.calTensorData(pclMatrix=pcl,strStartDate='20190103')
+    testResult=RNNTest(RNNModel,xTest,yTest)
     
-    print('Running Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
+    print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
