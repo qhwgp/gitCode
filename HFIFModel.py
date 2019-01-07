@@ -10,15 +10,19 @@ from keras.models import Sequential
 from keras.layers import Activation,Dense,GRU
 import pandas as pd
 import numpy as np
+from WindPy import w
 
 #--------------Basic function start-----------
 
 def csvToList(csvFile):
     resultList=[]
-    with open(csvFile, mode='r') as f:
-        csvReader = csv.reader(f)
-        for row in csvReader:
-            resultList.append(list(map(eval,row)))
+    try:
+        with open(csvFile, mode='r') as f:
+            csvReader = csv.reader(f)
+            for row in csvReader:
+                resultList.append(list(map(eval,row)))
+    except:
+        pass
     return resultList
 
 def listToCsv(listData,csvFilePath):
@@ -123,7 +127,7 @@ def RNNTest(model,x_test,y_test,testRatePercent=80,judgeRight=0.01):
 #--------------Functionality Start------------
 
 def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
-    from WindPy import w
+    
     if w.isconnected()==False:
         msg=w.start(waitTime=15)
         if msg.ErrorCode!=0:
@@ -141,8 +145,8 @@ def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
         return False
     return pd.DataFrame(np.array(msg.Data).T,index=msg.Times,columns=msg.Codes)
 
-def getPastAveAmnt(pdData,nday,listCode,strSDay,strEDay=''):
-    amntData=list(pdData.T.values)
+def getPastAveAmnt(pdData,nday,listCode,strSDay='19000101',strEDay='99999999'):
+    amntData=pdData.T.values.tolist()
     amntTimes=list(pdData.index)
     amntCodes=list(pdData.columns)
     if len(amntTimes)<=nday:
@@ -150,6 +154,10 @@ def getPastAveAmnt(pdData,nday,listCode,strSDay,strEDay=''):
     dictPastAveAmnt={}
     for iday in range(nday,len(amntTimes)):
         strDay=amntTimes[iday].replace('-','')
+        if len(strDay.split('/'))>1:
+            strDay=datetime.datetime.strptime(amntTimes[iday],'%Y/%m/%d').strftime("%Y%m%d")
+        if int(strDay)<int(strSDay) or int(strDay)>int(strEDay):
+            continue
         dictdailyPastAveAmnt={}
         for icode in range(len(amntCodes)):
             code=amntCodes[icode]
@@ -158,6 +166,8 @@ def getPastAveAmnt(pdData,nday,listCode,strSDay,strEDay=''):
             sumAmnt=0
             aveAmnt=0
             for amnt in listamnt:
+                if type(amnt)==str:
+                    amnt=int(amnt.replace(',','').split('.')[0])
                 if amnt>1:
                     nCount+=1
                     sumAmnt+=amnt
@@ -395,9 +405,9 @@ class AIHFIF:
         #past nday's average amount
         listCode=list(self.dictCodeInfo.keys())
         pdDataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
-        pdData=pd.read_csv(pdDataFile,header=0,index_col=0)
+        pdData=pd.read_csv(pdDataFile,header=0,index_col=0,engine='python')
         dictPastAveAmnt=getPastAveAmnt(pdData,self.nDayAverage,listCode,
-                                           sDate,eDate)
+                                           listDate[0],listDate[-1])
         #indu data
         for strDate in listDate:
             nDate=datetime.datetime.strptime(strDate,'%Y%m%d')
@@ -462,8 +472,8 @@ class AIHFIF:
         return (np.array(xData),np.array(yData),pclMatrix)
     
     def collectAllData(self):
-        self.updateStdData()
-        self.updateWindDailyAmntData()
+        #self.updateStdData()
+        #self.updateWindDailyAmntData()
         self.calInduData()
         
 #---------------Build HFIF Model End--------
@@ -473,15 +483,21 @@ if __name__=='__main__':
     np.seterr(divide='ignore',invalid='ignore')
     print('Start Running...')
     #build up
-    workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
-    cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
+    workPath='F:\\草稿\\HFI_Model'
+    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
     #collect data
-    #HFIF_Model.collectAllData
+    #HFIF_Model.collectAllData()
     (xTrain,yTrain,pcl)=HFIF_Model.calTensorData(strEndDate='20190102')
-    RNNModel=buildRNNModel(xTrain,yTrain)
     (xTest,yTest,pcl)=HFIF_Model.calTensorData(pclMatrix=pcl,strStartDate='20190103')
-    testResult=RNNTest(RNNModel,xTest,yTest)
+    listPredict=[yTest]
+    for nNet in range(10):
+        for nRepeat in range(10):
+            print(nNet,nRepeat)
+            RNNModel=buildRNNModel(xTrain,yTrain,[int(40*(1+nNet/5)),int(30*(1+nNet/5))],
+                                    [int(30*(1+nNet/5)),int(20*(1+nNet/5))])
+            listPredict.append(RNNModel.predict(xTest).reshape(-1))
+    #testResult=RNNTest(RNNModel,xTest,yTest)
     
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
