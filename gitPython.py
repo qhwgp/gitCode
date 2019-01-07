@@ -33,10 +33,10 @@ if __name__=='__main__':
     
     strUpdateInfo='add model test'
     
-     
+    """
     fileList=pushPath(gitPath,strUpdateInfo)
     print('push to gitHub OK.')
     """
     pullPath(gitPath)
     print('pull from gitHub OK.')
-    """
+    
