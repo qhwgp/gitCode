@@ -9,7 +9,7 @@ push to git in office
 
 import git
 
-strUpdateInfo='add home'
+strUpdateInfo='add train'
 
 gitPath='C:/Users/WAP/gitCode'
 #-------------------------------------------

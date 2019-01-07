@@ -172,7 +172,6 @@ class ForeFactor:
             self.codelist.add(dt[0])
             self.dictCodeWeight[dt[0]]=(float(dt[1]),int(dt[2]))
         self.codelist.add('399905.SZ')
-        #self.codelist.add('600000.SH')
         self.nparams=np.load(PathParams)[:,1:]
         self.model_1min=models.load_model(Path1min)
         self.model_2min=models.load_model(Path2min)
@@ -261,20 +260,7 @@ if __name__ == '__main__':
     prm=(StrategyName,PathWei,PathParams,Path1min,Path2min,Path3min,
                  nrow,ncolumn,ffw1m,ffw2m,ffw3m,ffwt)
     eventManager.SendEvent(MyEvent("iniData",prm))
-    """
-    path="D:\\Model_HS300\\"
-    StrategyName='QUOTER_510300'
-    PathWei=path+"HS300wei.xlsx"
-    PathParams=path+"nparams.npy"
-    Path1min=path+"model_HS300_2017_1min_3level_36.h5"
-    Path2min=path+"model_HS300_2017_2min_3level_36.h5"
-    Path3min=path+"model_HS300_2017_3min_3level_36.h5"
-    ncolumn=18
     
-    prm=(StrategyName,PathWei,PathParams,Path1min,Path2min,Path3min,
-                 nrow,ncolumn,ffw1m,ffw2m,ffw3m,ffwt)
-    eventManager.SendEvent(MyEvent("iniData",prm))
-    """
     while True:
         eventManager.SendEvent(MyEvent("normData",""))
         time.sleep(5)

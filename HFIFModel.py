@@ -6,7 +6,7 @@ version git1.1
 """
 
 import time,csv,datetime,xlrd,os,math
-from keras.models import Sequential
+from keras import models,backend
 from keras.layers import Activation,Dense,GRU
 import pandas as pd
 import numpy as np
@@ -64,8 +64,8 @@ def calPercentile(xValue,arrPercentile): #len(arrPercentile)=100,upscane
         result=1
     return result*np.sign(xValue)
 
-def buildRNNModel(data_x,data_y,arrGRU=0,arrDense=0,actFlag='tanh'):
-    model = Sequential()
+def buildRNNModel(arrGRU=0,arrDense=0,actFlag='tanh'):
+    model = models.Sequential()
     xShape=data_x[0].shape
     if arrGRU==0:
         arrGRU=int(math.sqrt(xShape[0]*xShape[1]))
@@ -92,11 +92,6 @@ def buildRNNModel(data_x,data_y,arrGRU=0,arrDense=0,actFlag='tanh'):
         model.add(Activation(actFlag))
     model.add(Dense(1))
     model.compile(loss="mse", optimizer="rmsprop",metrics=['accuracy'])
-    r = np.random.permutation(len(data_x)) #shuffle
-    sdata_x=data_x[r,:]
-    sdata_y=data_y[r]
-    print('Start fit RNN Model...')
-    model.fit(sdata_x,sdata_y,batch_size=128,epochs=1,validation_split=0.05)
     return model
 
 def RNNTest(model,x_test,y_test,testRatePercent=80,judgeRight=0.01):
@@ -318,6 +313,8 @@ class AIHFIF:
         self.nDayAverage=0
         self.minuteXData=0
         self.minuteYData=0
+        self.nGRU=0
+        self.nDense=0
         self.log=''
         self._getCfg()
         
@@ -340,6 +337,9 @@ class AIHFIF:
         self.nDayAverage=int(arrCfg[4]+0.01)
         self.minuteXData=int(arrCfg[5]+0.01)
         self.minuteYData=int(arrCfg[6]+0.01)
+        self.nGRU=list(map(int,arrCfg[7].split(',')))
+        self.nDense=list(map(int,arrCfg[8].split(',')))
+        self.actFunction=arrCfg[9]
     
     def updateStdData(self,intStartDate=0):
         print('Start updateStdData...')
@@ -471,6 +471,22 @@ class AIHFIF:
                 yData.append(xNormData[n,-1])
         return (np.array(xData),np.array(yData),pclMatrix)
     
+    def TrainModel(self,data_x,data_y):
+        (filepath,tempfilename) = os.path.split(self.cfgFile)
+        (filename,extension) = os.path.splitext(tempfilename)
+        modelfile=os.path.join(self.workPath,'model',filename+'.h5')
+        if os.path.exists(modelfile):
+            model=models.load_model(modelfile)
+        else:
+            model=buildRNNModel(self.nGRU,self.nDense,self.actFunction)
+        r = np.random.permutation(len(data_x)) #shuffle
+        sdata_x=data_x[r,:]
+        sdata_y=data_y[r]
+        print('Start fit RNN Model...')
+        model.fit(sdata_x,sdata_y,batch_size=128,epochs=1,validation_split=0.05)
+        model.save(modelfile)
+            
+    
     def collectAllData(self):
         #self.updateStdData()
         #self.updateWindDailyAmntData()
@@ -485,6 +501,8 @@ if __name__=='__main__':
     #build up
     workPath='F:\\草稿\\HFI_Model'
     cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
+    #workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
+    #cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
     #collect data
@@ -498,6 +516,7 @@ if __name__=='__main__':
             RNNModel=buildRNNModel(xTrain,yTrain,[int(40*(1+nNet/5)),int(30*(1+nNet/5))],
                                     [int(30*(1+nNet/5)),int(20*(1+nNet/5))])
             listPredict.append(RNNModel.predict(xTest).reshape(-1))
+            backend.clear_session()
     #testResult=RNNTest(RNNModel,xTest,yTest)
     
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
