@@ -10,7 +10,7 @@ from keras import models,backend
 from keras.layers import Activation,Dense,GRU
 import pandas as pd
 import numpy as np
-from WindPy import w
+#from WindPy import w
 
 #--------------Basic function start-----------
 
@@ -64,6 +64,10 @@ def calPercentile(xValue,arrPercentile): #len(arrPercentile)=100,upscane
         result=1
     return result*np.sign(xValue)
 
+def getModelName(nGRU,nDense,actFlag):
+    return 'model.'+'_'.join(list(map(str,nGRU)))+'.'+\
+    '_'.join(list(map(str,nDense)))+'.'+actFlag+'.h5'
+
 def buildRNNModel(xShape,arrGRU,arrDense,actFlag='tanh'):
     model = models.Sequential()
     #xShape=data_x[0].shape
@@ -95,10 +99,10 @@ def buildRNNModel(xShape,arrGRU,arrDense,actFlag='tanh'):
 
 def trainRNNModel(model,xTrain,yTrain):
     r = np.random.permutation(len(xTrain)) #shuffle
-    data_x=xTrain[r,:]
-    data_y=yTrain[r]
+    xTrain=xTrain[r,:]
+    yTrain=yTrain[r]
     print('Start fit RNN Model...')
-    model.fit(data_x,data_y,batch_size=128,epochs=1,validation_split=0.05)
+    model.fit(xTrain,yTrain,batch_size=128,epochs=1,validation_split=0.05)
 
 def RNNTest(model,x_test,y_test,testRatePercent=80,judgeRight=0.01):
     predicted = model.predict(x_test).reshape(-1)
@@ -126,7 +130,7 @@ def RNNTest(model,x_test,y_test,testRatePercent=80,judgeRight=0.01):
 #--------------Basic function end-------------
 
 #--------------Functionality Start------------
-
+"""
 def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
     
     if w.isconnected()==False:
@@ -145,7 +149,7 @@ def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
     if msg.ErrorCode!=0:
         return False
     return pd.DataFrame(np.array(msg.Data).T,index=msg.Times,columns=msg.Codes)
-
+"""
 def getPastAveAmnt(pdData,nday,listCode,strSDay='19000101',strEDay='99999999'):
     amntData=pdData.T.values.tolist()
     amntTimes=list(pdData.index)
@@ -374,7 +378,7 @@ class AIHFIF:
                     if not os.path.exists(OutFile):
                         listToCsv(listStdData[i],OutFile)
         #return listStdData
-    
+    """
     def updateWindDailyAmntData(self,strSDate='19000101'):
         print('Start updateWindDailyAmntData...')
         dataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
@@ -387,8 +391,9 @@ class AIHFIF:
         pdData=getPdWIndAmnt(nday,listCode,startDate)
         pdData.to_csv(dataFile)
         #return pdData
-        
+    """ 
     def updateAmntByTick(self,strSDate='19000101'):
+        print('Start updateAmntByTick...')
         pdDataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
         pdData=pd.read_csv(pdDataFile,header=0,index_col=0,engine='python')
         amntDays=list(pdData.index)
@@ -435,20 +440,24 @@ class AIHFIF:
         listCode=list(self.dictCodeInfo.keys())
         pdDataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
         pdData=pd.read_csv(pdDataFile,header=0,index_col=0,engine='python')
-        dictPastAveAmnt=getPastAveAmnt(pdData,self.nDayAverage,listCode,
-                                           listDate[0],listDate[-1])
+        dictPastAveAmnt={}
         #indu data
         for strDate in listDate:
+            
             nDate=datetime.datetime.strptime(strDate,'%Y%m%d')
             if nDate<sDate or nDate>eDate:
                 continue
             #collect nDate's standard data list
             nStdDataPath=os.path.join(stdDataPath,strDate)
+            induDataFile=os.path.join(outPath,strDate+'_0.csv')
+            if os.path.exists(induDataFile):
+                continue
             dictStdData=getDictStdData(nStdDataPath,listCode)
+            if len(dictPastAveAmnt)==0:
+                dictPastAveAmnt=getPastAveAmnt(pdData,self.nDayAverage,
+                        listCode,strDate,listDate[-1])
             for nFlag in dictStdData.keys():
                 induDataFile=os.path.join(outPath,strDate+'_'+nFlag+'.csv')
-                if os.path.exists(induDataFile):
-                    continue
                 dictPartStdData=dictStdData[nFlag]
                 npDInduData=getDailyInduData(dictPartStdData,
                       self.dictCodeInfo,dictPastAveAmnt[strDate],self.timeSpan)
@@ -463,7 +472,7 @@ class AIHFIF:
         induDataPath=os.path.join(self.workPath,'induData',filename)
         tempDataPath=os.path.join(self.workPath,'tempData',filename)
         if not os.path.exists(tempDataPath):
-            os.mkdir(tempDataPath)
+            os.makedirs(tempDataPath)
         listInduDataFile=os.listdir(induDataPath)
         nx=int(self.minuteXData*60/self.timeSpan+0.1)
         ny=int(self.minuteYData*60/self.timeSpan+0.1)
@@ -514,7 +523,11 @@ class AIHFIF:
     def _GetModelFile_(self):
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
-        return os.path.join(self.workPath,'model',filename+'.h5')
+        modelPath=os.path.join(self.workPath,'model')
+        if not os.path.exists(modelPath):
+            os.makedirs(modelPath)
+        modelName=getModelName(self.nGRU,self.nDense,self.actFunction)
+        return os.path.join(self.workPath,modelName)
     
     def _GetTempDataPath_(self):
         (filepath,tempfilename) = os.path.split(self.cfgFile)
@@ -543,7 +556,7 @@ class AIHFIF:
         fileName='testResult_'+datetime.datetime.now().strftime("%Y%m%d")+'.csv'
         np.savetxt(os.path.join(tempDataPath,fileName),testResult,fmt="%.4f",delimiter=',')
         
-    def CompareModels(self,rRange=2,nNet=10,nRepeat=10):
+    def CompareModels(self,rRange=2,nNet=3,nRepeat=1):
         tempDataPath=self._GetTempDataPath_()
         xTest=np.load(os.path.join(tempDataPath,'xTest.npy'))
         yTest=np.load(os.path.join(tempDataPath,'yTest.npy'))
@@ -553,13 +566,20 @@ class AIHFIF:
         listPredict=[yTest]
         npGRU=np.array(self.nGRU)
         npDense=np.array(self.nDense)
+        modelPath=os.path.join(self.workPath,'model')
+        if not os.path.exists(modelPath):
+            os.makedirs(modelPath)
         for nn in range(nNet):
             nowGRU=list((npGRU*(3*nn/2/nNet+0.5)).astype(int))
             nowDense=list((npDense*(3*nn/2/nNet+0.5)).astype(int))
+            modelFile=os.path.join(modelPath,getModelName(nowGRU,nowDense,self.actFunction))
+            if not os.path.exists(modelFile):
+                RNNModel=buildRNNModel(xShape,nowGRU,nowDense,self.actFunction)
+            else:
+                RNNModel=models.load_model(modelFile)
             print(nowGRU,nowDense)
             for nr in range(nRepeat):
                 print(nn,nr)
-                RNNModel=buildRNNModel(xShape,nowGRU,nowDense,self.actFunction)
                 trainRNNModel(RNNModel,xTrain,yTrain)
                 listPredict.append(RNNModel.predict(xTest).reshape(-1))
                 backend.clear_session()
@@ -582,17 +602,18 @@ if __name__=='__main__':
     #build up
     workPath='F:\\草稿\\HFI_Model'
     cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
-    #workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
-    #cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
+    if not os.path.exists(workPath):
+        workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
+        cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
     #collect data
-    """
+    
     HFIF_Model.collectAllData()
     HFIF_Model.calTensorData(strEndDate='20190102')
     HFIF_Model.calTensorData(isTrain=False,strStartDate='20190103')
     HFIF_Model.TrainModel()
-    """
+    HFIF_Model.TestModel()
     HFIF_Model.CompareModels()
     #testResult=RNNTest(RNNModel,xTest,yTest)
     
