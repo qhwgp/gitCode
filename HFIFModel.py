@@ -79,20 +79,26 @@ def buildRNNModel(xShape,arrGRU,arrDense,actFlag='tanh'):
     isrese=False
     if nGRU>1:
         isrese=True
-    model.add(GRU(arrGRU[0],input_shape=xShape,
-                  return_sequences=isrese))
+    model.add(GRU(int(arrGRU[0]),input_shape=xShape,return_sequences=isrese))
     model.add(Activation(actFlag))
     for n in range(1,nGRU):
         if n==nGRU-1:
             isrese=False
-        model.add(GRU(arrGRU[n],return_sequences=isrese))
+        model.add(GRU(int(arrGRU[n]),return_sequences=isrese))
         model.add(Activation(actFlag))
     for n in range(len(arrDense)):
-        model.add(Dense(arrDense[n]))
+        model.add(Dense(int(arrDense[n])))
         model.add(Activation(actFlag))
     model.add(Dense(1))
     model.compile(loss="mse", optimizer="rmsprop",metrics=['accuracy'])
     return model
+
+def trainRNNModel(model,xTrain,yTrain):
+    r = np.random.permutation(len(xTrain)) #shuffle
+    data_x=xTrain[r,:]
+    data_y=yTrain[r]
+    print('Start fit RNN Model...')
+    model.fit(data_x,data_y,batch_size=128,epochs=1,validation_split=0.05)
 
 def RNNTest(model,x_test,y_test,testRatePercent=80,judgeRight=0.01):
     predicted = model.predict(x_test).reshape(-1)
@@ -524,12 +530,7 @@ class AIHFIF:
             model=models.load_model(modelfile)
         else:
             model=buildRNNModel(data_x[0].shape,self.nGRU,self.nDense,self.actFunction)
-        
-        r = np.random.permutation(len(data_x)) #shuffle
-        data_x=data_x[r,:]
-        data_y=data_y[r]
-        print('Start fit RNN Model...')
-        model.fit(data_x,data_y,batch_size=128,epochs=1,validation_split=0.05)
+        trainRNNModel(model,data_x,data_y)
         model.save(modelfile)
         
     def TestModel(self):
@@ -548,18 +549,23 @@ class AIHFIF:
         yTest=np.load(os.path.join(tempDataPath,'yTest.npy'))
         xTrain=np.load(os.path.join(tempDataPath,'xTrain.npy'))
         yTrain=np.load(os.path.join(tempDataPath,'yTrain.npy'))
+        xShape=xTrain[0].shape
         listPredict=[yTest]
         npGRU=np.array(self.nGRU)
         npDense=np.array(self.nDense)
         for nn in range(nNet):
-            nowGRU=list((npGRU*(3*nn/2/nNet+0.1)).astype(np.int))
-            nowDense=list((npDense*(3*nn/2/nNet+0.1)).astype(np.int))
+            nowGRU=list((npGRU*(3*nn/2/nNet+0.5)).astype(int))
+            nowDense=list((npDense*(3*nn/2/nNet+0.5)).astype(int))
             print(nowGRU,nowDense)
             for nr in range(nRepeat):
                 print(nn,nr)
-                RNNModel=buildRNNModel(xTrain,yTrain,nowGRU,nowDense,self.actFunction)
+                RNNModel=buildRNNModel(xShape,nowGRU,nowDense,self.actFunction)
+                trainRNNModel(RNNModel,xTrain,yTrain)
                 listPredict.append(RNNModel.predict(xTest).reshape(-1))
                 backend.clear_session()
+        fileName='predicted_'+str(rRange)+'_'+str(nNet)+'_'+str(nRepeat)+datetime.datetime.now().strftime("%Y%m%d")+'.csv'
+        np.savetxt(os.path.join(tempDataPath,fileName),np.array(listPredict).T,fmt="%.4f",delimiter=',')
+        
         
     def collectAllData(self):
         self.updateStdData()
@@ -581,10 +587,13 @@ if __name__=='__main__':
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
     #collect data
+    """
     HFIF_Model.collectAllData()
     HFIF_Model.calTensorData(strEndDate='20190102')
     HFIF_Model.calTensorData(isTrain=False,strStartDate='20190103')
     HFIF_Model.TrainModel()
+    """
+    HFIF_Model.CompareModels()
     #testResult=RNNTest(RNNModel,xTest,yTest)
     
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
