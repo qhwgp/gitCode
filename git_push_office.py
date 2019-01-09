@@ -9,7 +9,7 @@ push to git in office
 
 import git
 
-strUpdateInfo='more Model'
+strUpdateInfo='by office'
 
 gitPath='F:/草稿/gitCode/gitCode'
 #-------------------------------------------

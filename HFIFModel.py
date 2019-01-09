@@ -352,18 +352,21 @@ class AIHFIF:
         self.nDense=list(map(int,arrCfg[8].split(',')))
         self.actFunction=arrCfg[9]
     
-    def updateStdData(self,intStartDate=0):
+    def updateStdData(self,strSDate='19000101',strEDate='99999999'):
         print('Start updateStdData...')
         mainOutPath=os.path.join(self.workPath,'StandardData',str(int(self.timeSpan))+'_sec_span')
         listCode=list(self.dictCodeInfo.keys())
         listCode.append(self.indexCode)
         listStdData=[]
-        for path in os.listdir(self.rawDataPath):
-            if int(path)<intStartDate:
+        intStartDate=int(strSDate)
+        intEndDate=int(strEDate)
+        for pathDate in os.listdir(self.rawDataPath):
+            intPathDate=int(pathDate)
+            if intPathDate<intStartDate or intPathDate>intEndDate:
                 continue
-            datePath=os.path.join(self.rawDataPath,path)
+            datePath=os.path.join(self.rawDataPath,pathDate)
             for code in listCode:
-                outPath=os.path.join(mainOutPath,path)
+                outPath=os.path.join(mainOutPath,pathDate)
                 if not os.path.exists(outPath):
                     os.makedirs(outPath)
                 if os.path.exists(os.path.join(outPath,code+'_0.csv')):
@@ -520,19 +523,26 @@ class AIHFIF:
         np.save(os.path.join(tempDataPath,'y'+ttFlag+'.npy'),yData)
         #return (np.array(xData),np.array(yData),pclMatrix)
     
-    def _GetModelFile_(self):
+    def _GetModelPath_(self):
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
-        modelPath=os.path.join(self.workPath,'model')
+        modelPath=os.path.join(self.workPath,'model',filename)
         if not os.path.exists(modelPath):
             os.makedirs(modelPath)
+        return modelPath
+    
+    def _GetModelFile_(self):
+        modelPath=self._GetModelPath_()
         modelName=getModelName(self.nGRU,self.nDense,self.actFunction)
-        return os.path.join(self.workPath,modelName)
+        return os.path.join(modelPath,modelName)
     
     def _GetTempDataPath_(self):
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
-        return os.path.join(self.workPath,'tempData',filename)
+        tempDataPath=os.path.join(self.workPath,'tempData',filename)
+        if not os.path.exists(tempDataPath):
+            os.makedirs(tempDataPath)
+        return tempDataPath
         
     def TrainModel(self):
         modelfile=self._GetModelFile_()
@@ -556,7 +566,7 @@ class AIHFIF:
         fileName='testResult_'+datetime.datetime.now().strftime("%Y%m%d")+'.csv'
         np.savetxt(os.path.join(tempDataPath,fileName),testResult,fmt="%.4f",delimiter=',')
         
-    def CompareModels(self,rRange=2,nNet=3,nRepeat=1):
+    def CompareModels(self,rRange=2,nNet=5,nRepeat=5):
         tempDataPath=self._GetTempDataPath_()
         xTest=np.load(os.path.join(tempDataPath,'xTest.npy'))
         yTest=np.load(os.path.join(tempDataPath,'yTest.npy'))
@@ -566,7 +576,7 @@ class AIHFIF:
         listPredict=[yTest]
         npGRU=np.array(self.nGRU)
         npDense=np.array(self.nDense)
-        modelPath=os.path.join(self.workPath,'model')
+        modelPath=self._GetModelPath_()
         if not os.path.exists(modelPath):
             os.makedirs(modelPath)
         for nn in range(nNet):
@@ -582,8 +592,14 @@ class AIHFIF:
                 print(nn,nr)
                 trainRNNModel(RNNModel,xTrain,yTrain)
                 listPredict.append(RNNModel.predict(xTest).reshape(-1))
-                backend.clear_session()
-        fileName='predicted_'+str(rRange)+'_'+str(nNet)+'_'+str(nRepeat)+datetime.datetime.now().strftime("%Y%m%d")+'.csv'
+            RNNModel.save(modelFile)
+            backend.clear_session()
+        mfileName=os.path.join(tempDataPath,'predicted_'+datetime.datetime.now().strftime("%Y%m%d")+'_'+str(rRange)+'_'+str(nNet)+'_'+str(nRepeat))
+        i=0
+        fileName=mfileName+'_'+str(i)+'.csv'
+        while os.path.exists(fileName):
+            i+=1
+            fileName=mfileName+'_'+str(i)+'.csv'
         np.savetxt(os.path.join(tempDataPath,fileName),np.array(listPredict).T,fmt="%.4f",delimiter=',')
         
         
@@ -601,7 +617,8 @@ if __name__=='__main__':
     print('Start Running...')
     #build up
     workPath='F:\\草稿\\HFI_Model'
-    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
+    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
+    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
         cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
@@ -610,8 +627,8 @@ if __name__=='__main__':
     #collect data
     
     HFIF_Model.collectAllData()
-    HFIF_Model.calTensorData(strEndDate='20190102')
-    HFIF_Model.calTensorData(isTrain=False,strStartDate='20190103')
+    HFIF_Model.calTensorData(strEndDate='20190105')
+    HFIF_Model.calTensorData(isTrain=False,strStartDate='20190106')
     HFIF_Model.TrainModel()
     HFIF_Model.TestModel()
     HFIF_Model.CompareModels()
