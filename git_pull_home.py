@@ -7,5 +7,10 @@ Created on Mon Jan  7 08:43:52 2019
 import git
 gitPath='C:/Users/WAP/gitCode'
 repo = git.Repo(gitPath)
-repo.remote().pull()
-print('pull from gitHub OK.')
+try:
+    repo.remote().pull()
+    print('pull from gitHub OK.')
+except:
+    repo.git.stash()
+    repo.remote().pull()
+    print('save work and pull from gitHub OK.')
