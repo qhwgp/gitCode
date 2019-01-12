@@ -52,6 +52,13 @@ def intToDate(intDate):
 def strToDate(strDate):
     return datetime.datetime.strptime(strDate,'%Y%m%d')
 
+def strToInt(strDate):
+    if '-' in strDate:
+        lDate=strDate.split('-')
+    else:
+        lDate=strDate.split('/')
+    return int(lDate[0])*10000+int(lDate[1])*100+int(lDate[2])
+
 #Basic 3:
 def calPercentile(xValue,arrPercentile): #len(arrPercentile)=100,upscane
     isfind=False
@@ -160,38 +167,30 @@ def RNNTest(model,x_test,y_test,testRatePercent=90,judgeRight=0.01):
 
 #--------------Functionality Start------------
 
-def getPastAveAmnt(pdData,nday,listCode,strSDay='19000101',strEDay='99999999'):
-    amntData=pdData.T.values.tolist()
-    amntTimes=list(pdData.index)
-    amntCodes=list(pdData.columns)
-    if len(amntTimes)<=nday:
-        return False
+#Func 1:
+def getPastAveAmnt(dictDailyAmnt,nday,listCode,strSDay='19000101',strEDay='99990101'):
     dictPastAveAmnt={}
-    for iday in range(nday,len(amntTimes)):
-        strDay=amntTimes[iday].replace('-','')
-        if len(strDay.split('/'))>1:
-            strDay=datetime.datetime.strptime(amntTimes[iday],'%Y/%m/%d').strftime("%Y%m%d")
-        if int(strDay)<int(strSDay) or int(strDay)>int(strEDay):
-            continue
-        dictdailyPastAveAmnt={}
-        for icode in range(len(amntCodes)):
-            code=amntCodes[icode]
-            listamnt=amntData[icode][(iday-nday):iday]
-            nCount=0
-            sumAmnt=0
-            aveAmnt=0
-            for amnt in listamnt:
-                if type(amnt)==str:
-                    amnt=int(amnt.replace(',','').split('.')[0])
-                if amnt>1:
-                    nCount+=1
-                    sumAmnt+=amnt
-            if nCount>nday/2:
-                aveAmnt=sumAmnt/nCount
-            dictdailyPastAveAmnt[code]=aveAmnt
-        dictPastAveAmnt[strDay]=dictdailyPastAveAmnt
+    intSDay=int(strSDay)
+    intEDay=int(strEDay)
+    for aCode,pdAmntData in dictDailyAmnt.items():
+        for intDate in pdAmntData.index:
+            if intDate<intSDay or intDate>intEDay:
+                continue
+            pdData=pdAmntData[pdAmntData.index<intDate]
+            if len(pdData)<nday:
+                avgAmnt=0
+            else:
+                pdData=pdData.tail(nday)
+                ma=pdData.Amnt.max()
+                mi=pdData.Amnt.min()
+                pdData=pdData[(pdData.Amnt<ma)&(pdData.Amnt>mi)]
+                avgAmnt=pdData['Amnt'].mean()
+            if not intDate in dictPastAveAmnt:
+                dictPastAveAmnt[intDate]={}
+            dictPastAveAmnt[intDate][aCode]=avgAmnt
     return dictPastAveAmnt
 
+#Func 2:
 def getDictStdData(nStdDataPath,listCode):
     dictStdData={}
     lenCode=len(listCode[0])
@@ -205,6 +204,18 @@ def getDictStdData(nStdDataPath,listCode):
             csvFile=os.path.join(nStdDataPath,stdDataFileName)
             dictStdData[tFlag][code]=csvToList(csvFile)
     return dictStdData
+
+#Func 3:
+def getDictAmntData(amntDataPath,listCode):
+    dictDailyAmnt={}
+    for aCode in listCode:
+        fileName=os.path.join(amntDataPath,aCode+'.csv')
+        if os.path.exists(fileName):
+            pdAmntData=pd.read_csv(fileName,header=0,index_col=0,engine='python')
+        else:
+            pdAmntData=pd.DataFrame(columns=['Amnt'])
+        dictDailyAmnt[aCode]=pdAmntData
+    return dictDailyAmnt
 
 #--------------Functionality end--------------
 
@@ -418,7 +429,50 @@ class AIHFIF:
         pdData.to_csv(pdDataFile)           
     
     def updateAmntByRaw(self,strSDate='19000101',strEDate='99990101'):
-        pass
+        print('Start updateAmntByRaw...')
+        outPath=os.path.join(self.workPath,'DailyAmntData')
+        listCode=list(self.dictCodeInfo.keys())
+        dictDailyAmnt=getDictAmntData(outPath,listCode)
+        intStartDate=int(strSDate)
+        intEndDate=int(strEDate)
+        for pathDate in os.listdir(self.rawDataPath):
+            intPathDate=int(pathDate)
+            if intPathDate<intStartDate or intPathDate>intEndDate:
+                continue
+            dPath=os.path.join(self.rawDataPath,pathDate)
+            for aCode in listCode:
+                if not intPathDate in dictDailyAmnt[aCode].index:
+                    rawDataFile=os.path.join(dPath,aCode+'.csv')
+                    amnt=np.sum(np.loadtxt(rawDataFile,delimiter=',')[:,2])
+                    if amnt>1:
+                        dictDailyAmnt[aCode].loc[intPathDate]=amnt
+        for aCode in listCode:
+            pdData=dictDailyAmnt[aCode].sort_index()
+            pdData.to_csv(os.path.join(outPath,aCode+'.csv'))  
+
+    def updateAmntByWnd(self,wndFileName,strSDate='19000101',strEDate='99990101'):
+        print('Start updateAmntByWnd...')
+        outPath=os.path.join(self.workPath,'DailyAmntData')
+        setCode=set(self.dictCodeInfo.keys())
+        dictDailyAmnt=getDictAmntData(outPath,setCode)
+        intStartDate=int(strSDate)
+        intEndDate=int(strEDate)
+        pdDataFile=os.path.join(self.workPath,wndFileName)
+        pdData=pd.read_csv(pdDataFile,header=0,index_col=0,engine='python')
+        amntDays=list(pdData.index)
+        amntCodes=set(pdData.columns)
+        for aDay in amntDays:
+            intDate=strToInt(aDay)
+            if intDate<intStartDate or intDate>intEndDate:
+                continue
+            for aCode in setCode&amntCodes:
+                if not intDate in dictDailyAmnt[aCode].index and aCode in amntCodes:
+                    amnt=pdData.loc[aDay,aCode]
+                    if amnt>1:
+                        dictDailyAmnt[aCode].loc[intDate]=amnt
+        for aCode in setCode:
+            pdData=dictDailyAmnt[aCode].sort_index()
+            pdData.to_csv(os.path.join(outPath,aCode+'.csv')) 
 
 #Build 3:  
     def calInduData(self,strSDate='19000101',strEDate='99990101'):
@@ -432,24 +486,31 @@ class AIHFIF:
         #start&end day
         stdDataPath=os.path.join(self.workPath,'StandardData',str(int(self.timeSpan))+'_sec_span')
         listDate=os.listdir(stdDataPath)
+        """
         sDate=datetime.datetime.strptime(listDate[0],'%Y%m%d')
         eDate=datetime.datetime.strptime(listDate[-1],'%Y%m%d')
         startDate=datetime.datetime.strptime(strSDate,'%Y%m%d')
-        if sDate<startDate:
-            sDate=startDate
-        if strEDate!='':
-            endDate=datetime.datetime.strptime(strEDate,'%Y%m%d')
-            if eDate>endDate:
-                eDate=endDate
+        """
+        intLSD=int(listDate[0])
+        intLED=int(listDate[-1])
+        intSDate=int(strSDate)
+        if intSDate<intLSD:
+            intSDate=intLSD
+        intEDate=int(strEDate)
+        if intEDate>intLED:
+            intEDate=intLED
         #past nday's average amount
         listCode=list(self.dictCodeInfo.keys())
-        pdDataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
-        pdData=pd.read_csv(pdDataFile,header=0,index_col=0,engine='python')
+        #pdDataFile=os.path.join(self.workPath,'DailyAmntData','DailyAmntData.csv')
+        #pdData=pd.read_csv(pdDataFile,header=0,index_col=0,engine='python')
+        daPath=os.path.join(self.workPath,'DailyAmntData')
+        dictDailyAmnt=getDictAmntData(daPath,listCode)
         dictPastAveAmnt={}
         #indu data
         for strDate in listDate:
-            nDate=datetime.datetime.strptime(strDate,'%Y%m%d')
-            if nDate<sDate or nDate>eDate:
+            intDate=int(strDate)
+            #nDate=datetime.datetime.strptime(strDate,'%Y%m%d')
+            if intDate<intSDate or intDate>intEDate:
                 continue
             #collect nDate's standard data list
             nStdDataPath=os.path.join(stdDataPath,strDate)
@@ -458,13 +519,13 @@ class AIHFIF:
                 continue
             dictStdData=getDictStdData(nStdDataPath,listCode)
             if len(dictPastAveAmnt)==0:
-                dictPastAveAmnt=getPastAveAmnt(pdData,self.nDayAverage,
-                        listCode,strDate,listDate[-1])
+                dictPastAveAmnt=getPastAveAmnt(dictDailyAmnt,self.nDayAverage,
+                        listCode,strDate,strEDate)
             for nFlag in dictStdData.keys():
                 induDataFile=os.path.join(outPath,strDate+'_'+nFlag+'.csv')
                 dictPartStdData=dictStdData[nFlag]
                 npDInduData=getDailyInduData(dictPartStdData,
-                      self.dictCodeInfo,dictPastAveAmnt[strDate],self.timeSpan)
+                      self.dictCodeInfo,dictPastAveAmnt[intDate],self.timeSpan)
                 np.savetxt(induDataFile,npDInduData,fmt="%.2f",delimiter=',')
 
 #Build 4:
@@ -607,7 +668,8 @@ class AIHFIF:
         
     def collectAllData(self,strSDate='19000101'):
         self.updateStdData(strSDate)
-        self.updateAmntByTick(strSDate)
+        self.updateAmntByRaw(strSDate)
+        self.updateAmntByWnd('DailyAmntData.csv',strSDate)
         self.calInduData(strSDate)
         
 #---------------Build HFIF Model End--------
@@ -625,9 +687,11 @@ if __name__=='__main__':
         cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
+    """
     #collect data
-    HFIF_Model.collectAllData('20180601')
+    HFIF_Model.collectAllData()
     #cal
+    """
     HFIF_Model.calTensorData(strEDate='20190101')#Train Data
     HFIF_Model.calTensorData(isTrain=False,strSDate='20190101')#Test Data
     HFIF_Model.TrainModel()

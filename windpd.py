@@ -40,6 +40,39 @@ def getPdWIndAmnt(nday,listCode,strSDay,strEDay=''):
     if msg.ErrorCode!=0:
         return False
     return pd.DataFrame(np.array(msg.Data).T,index=msg.Times,columns=msg.Codes)
+
+def getPastAveAmnt(dictDailyAmnt,nday,listCode,strSDay='19000101',strEDay='99990101'):
+    amntData=pdData.T.values.tolist()
+    amntTimes=list(pdData.index)
+    amntCodes=list(pdData.columns)
+    if len(amntTimes)<=nday:
+        return False
+    dictPastAveAmnt={}
+    for iday in range(nday,len(amntTimes)):
+        strDay=amntTimes[iday].replace('-','')
+        if len(strDay.split('/'))>1:
+            strDay=datetime.datetime.strptime(amntTimes[iday],'%Y/%m/%d').strftime("%Y%m%d")
+        if int(strDay)<int(strSDay) or int(strDay)>int(strEDay):
+            continue
+        dictdailyPastAveAmnt={}
+        for icode in range(len(amntCodes)):
+            code=amntCodes[icode]
+            listamnt=amntData[icode][(iday-nday):iday]
+            nCount=0
+            sumAmnt=0
+            aveAmnt=0
+            for amnt in listamnt:
+                if type(amnt)==str:
+                    amnt=int(amnt.replace(',','').split('.')[0])
+                if amnt>1:
+                    nCount+=1
+                    sumAmnt+=amnt
+            if nCount>nday/2:
+                aveAmnt=sumAmnt/nCount
+            dictdailyPastAveAmnt[code]=aveAmnt
+        dictPastAveAmnt[strDay]=dictdailyPastAveAmnt
+    return dictPastAveAmnt
+
 """
 
 w.isconnected()
