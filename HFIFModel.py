@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sat Dec 29 14:15:04 2018
-version git1.1
+version HFIF_v2.0
 @author: wap
 """
 
@@ -112,16 +112,18 @@ def buildRNNModel(xShape,arrGRU,arrDense,actFlag='tanh'):
     return model
 
 #Basic 5:
-def trainRNNModel(model,xNormData,nDailyData,nx,ny,batchSize=100):
+def trainRNNModel(model,xNormData,nDailyData,nx,ny,cRate=1,batchSize=100):
     print('Start fit RNN Model...')
     geneR=[]
     ndd=nDailyData-ny
     nday=int(xNormData.shape[0]/ndd)
+    cyValue=np.percentile(np.abs(xNormData[:,-1]),(1-cRate)*100)
     for i in range(nday):
         for j in range(nx,ndd):
-            geneR.append(i*ndd+j)
+            if xNormData[i*ndd+j,-1]>=cyValue or xNormData[i*ndd+j,-1]<=-cyValue:
+                geneR.append(i*ndd+j)
     r = np.random.permutation(geneR) #shuffle
-    spb=int(len(r)/batchSize)
+    spb=int(len(r)/batchSize)-1
     model.fit_generator(generateTrainData(xNormData,nDailyData,
                     nx,ny,r,batchSize),steps_per_epoch=spb, epochs=1)
     
@@ -635,7 +637,7 @@ class AIHFIF:
         np.savetxt(os.path.join(tempDataPath,fileName),testResult,fmt="%.4f",delimiter=',')
         self.savePredictFile([yTest,predict],self.nGRU,self.nDense,self.actFunction)
         
-    def CompareModels(self,rRange=2,nNet=5,nRepeat=10):
+    def CompareModels(self,rRange=2,nNet=3,nRepeat=3):
         tempDataPath=self._GetTempDataPath_()
         normTestData=np.load(os.path.join(tempDataPath,'normTestData.npy'))
         xTest,yTest=getTensorData(normTestData,*self._getModelParam_())
@@ -659,7 +661,7 @@ class AIHFIF:
             print(nowGRU,nowDense)
             for nr in range(nRepeat):
                 print(nn,nr)
-                trainRNNModel(RNNModel,xNormData,nDailyData,nx,ny)
+                trainRNNModel(RNNModel,xNormData,nDailyData,nx,ny,cRate=2**(-nr))
                 listPredict.append(RNNModel.predict(xTest).reshape(-1))
             RNNModel.save(modelFile)
             backend.clear_session()
@@ -691,11 +693,13 @@ if __name__=='__main__':
     #collect data
     HFIF_Model.collectAllData()
     #cal
-    """
-    HFIF_Model.calTensorData(strEDate='20190101')#Train Data
-    HFIF_Model.calTensorData(isTrain=False,strSDate='20190101')#Test Data
+    
+    HFIF_Model.calTensorData(strEDate='20190105')#Train Data
+    HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    
     HFIF_Model.TrainModel()
     HFIF_Model.TestModel()
+    """
     HFIF_Model.CompareModels()
     
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
