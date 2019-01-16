@@ -5,9 +5,9 @@ version HFIF_v2.0
 @author: wap
 """
 
-import time,csv,datetime,xlrd,os,math
+import time,csv,datetime,xlrd,os#,math
 from keras import models,backend
-from keras.layers import Activation,Dense,GRU
+from keras.layers import Activation,Dense,GRU,BatchNormalization
 import pandas as pd
 import numpy as np
 
@@ -85,27 +85,33 @@ def getPredictName(nGRU,nDense,actFlag):
 def buildRNNModel(xShape,arrGRU,arrDense,actFlag='tanh'):
     model = models.Sequential()
     #xShape=data_x[0].shape
+    """
     if arrGRU==0:
         arrGRU=int(math.sqrt(xShape[0]*xShape[1]))
     if arrDense==0:
         arrDense=int(arrGRU*0.6)
+    
     if type(arrGRU)!=list:
         arrGRU=[arrGRU]
     if type(arrDense)!=list:
         arrDense=[arrDense]
+    """
     nGRU=len(arrGRU)
     isrese=False
     if nGRU>1:
         isrese=True
     model.add(GRU(int(arrGRU[0]),input_shape=xShape,return_sequences=isrese))
+    model.add(BatchNormalization())
     model.add(Activation(actFlag))
     for n in range(1,nGRU):
         if n==nGRU-1:
             isrese=False
         model.add(GRU(int(arrGRU[n]),return_sequences=isrese))
+        model.add(BatchNormalization())
         model.add(Activation(actFlag))
     for n in range(len(arrDense)):
         model.add(Dense(int(arrDense[n])))
+        model.add(BatchNormalization())
         model.add(Activation(actFlag))
     model.add(Dense(1))
     model.compile(loss="mse", optimizer="rmsprop",metrics=['accuracy'])
@@ -445,7 +451,10 @@ class AIHFIF:
             for aCode in listCode:
                 if not intPathDate in dictDailyAmnt[aCode].index:
                     rawDataFile=os.path.join(dPath,aCode+'.csv')
-                    amnt=np.sum(np.loadtxt(rawDataFile,delimiter=',')[:,2])
+                    try:
+                        amnt=np.sum(np.loadtxt(rawDataFile,delimiter=',')[:,2])
+                    except:
+                        amnt=0
                     if amnt>1:
                         dictDailyAmnt[aCode].loc[intPathDate]=amnt
         for aCode in listCode:
@@ -637,7 +646,7 @@ class AIHFIF:
         np.savetxt(os.path.join(tempDataPath,fileName),testResult,fmt="%.4f",delimiter=',')
         self.savePredictFile([yTest,predict],self.nGRU,self.nDense,self.actFunction)
         
-    def CompareModels(self,rRange=2,nNet=3,nRepeat=3):
+    def CompareModels(self,rRange=2,nNet=4,nRepeat=4):
         tempDataPath=self._GetTempDataPath_()
         normTestData=np.load(os.path.join(tempDataPath,'normTestData.npy'))
         xTest,yTest=getTensorData(normTestData,*self._getModelParam_())
@@ -667,31 +676,58 @@ class AIHFIF:
             backend.clear_session()
             self.savePredictFile(listPredict,nowGRU,nowDense,self.actFunction)
             listPredict=[yTest]
+            
+    def deepCompareModels(self,arrCompare=[[1,0.5],[1,0.5]],arrNNet=[1,1]):
+        tempDataPath=self._GetTempDataPath_()
+        normTestData=np.load(os.path.join(tempDataPath,'normTestData.npy'))
+        xTest,yTest=getTensorData(normTestData,*self._getModelParam_())
+        xNormData=np.load(os.path.join(tempDataPath,'normTrainData.npy'))
+        nDailyData,nx,ny=self._getModelParam_()
+        npGRU=np.array(self.nGRU)
+        npDense=np.array(self.nDense)
+        modelPath=self._GetModelPath_()
+        if not os.path.exists(modelPath):
+            os.makedirs(modelPath)
+        listPredict=[yTest]
+        for i in range(len(arrCompare)):
+            rp=arrCompare[i]
+            nNet=arrNNet[i]
+            nowGRU=list((npGRU*nNet).astype(int))
+            nowDense=list((npDense*nNet).astype(int))
+            RNNModel=buildRNNModel((nx,xNormData.shape[1]-1),nowGRU,nowDense,self.actFunction)
+            print(rp,nowGRU,nowDense)
+            for cr in rp:
+                trainRNNModel(RNNModel,xNormData,nDailyData,nx,ny,cRate=cr)
+                listPredict.append(RNNModel.predict(xTest).reshape(-1))
+            backend.clear_session()
+            self.savePredictFile(listPredict,nowGRU,nowDense,self.actFunction)
+            listPredict=[yTest]
         
     def collectAllData(self,strSDate='19000101'):
         self.updateStdData(strSDate)
+        #self.updateAmntByWnd('DailyAmntData.csv')
         self.updateAmntByRaw(strSDate)
-        self.updateAmntByWnd('DailyAmntData.csv',strSDate)
         self.calInduData(strSDate)
         
 #---------------Build HFIF Model End--------
 
 if __name__=='__main__':
     gtime = time.time()
-    np.seterr(divide='ignore',invalid='ignore')
+    #np.seterr(divide='ignore',invalid='ignore')
     print('Start Running...')
     #build up
     workPath='F:\\草稿\\HFI_Model'
-    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
+    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
+    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
         cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
-    """
+    
     #collect data
-    HFIF_Model.collectAllData()
+    HFIF_Model.collectAllData(strSDate='20180601')
     #cal
     
     HFIF_Model.calTensorData(strEDate='20190105')#Train Data
@@ -699,7 +735,21 @@ if __name__=='__main__':
     
     HFIF_Model.TrainModel()
     HFIF_Model.TestModel()
-    """
-    HFIF_Model.CompareModels()
+    arrCompare=[]
+    arrNNet=[]
+    for i in range(5):
+        arrCompare.append([1,0.5])
+        arrNNet.append(0.6)
+    for i in range(5):
+        arrCompare.append([1,0.5])
+        arrNNet.append(0.8)
+    for i in range(5):
+        arrCompare.append([1,0.5])
+        arrNNet.append(1.2)
+    for i in range(5):
+        arrCompare.append([1,0.5])
+        arrNNet.append(1.4)
+    HFIF_Model.deepCompareModels(arrCompare,arrNNet)
+    #HFIF_Model.CompareModels()
     
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))

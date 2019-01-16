@@ -1,4 +1,11 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jan 16 16:26:07 2019
+
+@author: WGP
+"""
+
+# -*- coding: utf-8 -*-
 """
 Created on Wed Jun 28 09:18:19 2017
 
@@ -95,9 +102,6 @@ class MSSQL:
 
 def TDFCallBack(pMarketdata):
     eventManager.SendEvent(MyEvent("quote",pMarketdata))
-    
-def TDFIndexCallBack(pMarketdata):
-    eventManager.SendEvent(MyEvent("index",pMarketdata))
 
 def MyIniData(basicparams):
     global dictForeFactor
@@ -112,24 +116,10 @@ def MyNormData(normEvent):
     try:
         for key in dictForeFactor:
             dictForeFactor[key].CalPM()
-            pm=dictForeFactor[key].pm
-            sql.UpdateFF(dictForeFactor[key].StrategyName,pm[0],pm[1],pm[2])
+            #pm=dictForeFactor[key].pm
+            #sql.UpdateFF(dictForeFactor[key].StrategyName,pm[0],pm[1],pm[2])
     finally:
         lock.release()
-        
-def Writefile(datapath,code,dt):
-    code_file = datapath+'\\' + code + '.csv'
-    with open(code_file, "a", newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([dt.nTime,dt.nMatch,dt.iTurnover])
-        f.close()
-
-def WriteIndexfile(datapath,code,dt):
-    code_file = datapath+'\\' + code + '.csv'
-    with open(code_file, "a", newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([dt.nTime,dt.nLastIndex,dt.iTurnover])
-        f.close()
         
 def ReceiveQuote(pMarketdata):
     dt =pMarketdata.data
@@ -139,16 +129,6 @@ def ReceiveQuote(pMarketdata):
         for key in dictForeFactor:
             if code in dictForeFactor[key].codelist:
                 dictForeFactor[key].dictquote[code]=(dt.nTime/1000,dt.nMatch/10000,dt.iTurnover/1000000)
-        Writefile(datapath,code,dt)
-    finally:
-        lock.release()
-
-def ReceiveIndexQuote(pMarketdata):
-    dt =pMarketdata.data
-    lock.acquire()
-    try:
-        code=bytes.decode(dt.szWindCode)
-        WriteIndexfile(datapath,code,dt)
     finally:
         lock.release()
     
@@ -228,14 +208,12 @@ if __name__ == '__main__':
 
     #Event
     eventManager.AddEventListener("quote",ReceiveQuote)
-    eventManager.AddEventListener("index",ReceiveIndexQuote)
     eventManager.AddEventListener("iniData",MyIniData)
     eventManager.AddEventListener("normData",MyNormData)
     eventManager.Start()
     
     #MarketData
     w.SetMarketDataCallBack(TDFCallBack)
-    w.SetIndexDataCallBack(TDFIndexCallBack)
     dataVendor = w.WindMarketVendor("TDFConfig.ini", "TDFAPI25.dll")
     nConnect=0
     while (dataVendor.Reconnect() is False):
@@ -264,19 +242,5 @@ if __name__ == '__main__':
     while True:
         eventManager.SendEvent(MyEvent("normData",""))
         time.sleep(5)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     
