@@ -81,42 +81,42 @@ def getModelName(nGRU,nDense,actFlag):
 def getPredictName(nGRU,nDense,actFlag):
     return 'predict.'+'_'.join(list(map(str,nGRU)))+'.'+\
     '_'.join(list(map(str,nDense)))+'.'+actFlag+'.'+datetime.datetime.now().strftime("%Y%m%d")
+    
+def getTestResultName(nGRU,nDense,actFlag):
+    return 'testResult.'+'_'.join(list(map(str,nGRU)))+'.'+\
+    '_'.join(list(map(str,nDense)))+'.'+actFlag+'.'+datetime.datetime.now().strftime("%Y%m%d")
 
 def myLoss(y_true, y_pred):
-    return backend.mean(backend.square((y_pred - y_true)*(backend.abs(y_true)+0.1)), axis=-1)
+    return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
 
 def buildRNNModel(xShape,arrGRU,arrDense,actFlag='tanh'):
     model = models.Sequential()
-    #xShape=data_x[0].shape
-    """
-    if arrGRU==0:
-        arrGRU=int(math.sqrt(xShape[0]*xShape[1]))
-    if arrDense==0:
-        arrDense=int(arrGRU*0.6)
-    
-    if type(arrGRU)!=list:
-        arrGRU=[arrGRU]
-    if type(arrDense)!=list:
-        arrDense=[arrDense]
+
     """
     nGRU=len(arrGRU)
     isrese=False
     if nGRU>1:
         isrese=True
-    model.add(GRU(int(arrGRU[0]),activation=actFlag,input_shape=xShape,return_sequences=isrese))
-    model.add(Dropout(0.2))
+    model.add(GRU(int(arrGRU[0]),activation=actFlag,recurrent_activation=actFlag,input_shape=xShape,
+                  dropout=0.1, recurrent_dropout=0.1,return_sequences=isrese))
+    #model.add(Dropout(0.2))
     #model.add(Activation(actFlag))
     for n in range(1,nGRU):
         if n==nGRU-1:
             isrese=False
-        model.add(GRU(int(arrGRU[n]),activation=actFlag,return_sequences=isrese))
+        model.add(GRU(int(arrGRU[n]),activation=actFlag,recurrent_activation=actFlag,dropout=0.1,
+                   recurrent_dropout=0.1,return_sequences=isrese))
         #model.add(BatchNormalization())
-        model.add(Dropout(0.2))
+        #model.add(Dropout(0.2))
     for n in range(len(arrDense)):
         model.add(Dense(int(arrDense[n]),activation=actFlag))
         #model.add(BatchNormalization())
         model.add(Dropout(0.2))
-    model.add(Dense(1))
+        
+        """
+    model.add(GRU(1,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
+                  dropout=0.1,recurrent_dropout=0.1,return_sequences=False))
+    #model.add(Dense(1))
     model.compile(loss=myLoss, optimizer="rmsprop",
                   metrics=[metrics.mean_absolute_error])
     return model
@@ -133,7 +133,7 @@ def trainRNNModel(model,xNormData,nDailyData,nx,ny,cRate=1,batchSize=100):
             if xNormData[i*ndd+j,-1]>=cyValue or xNormData[i*ndd+j,-1]<=-cyValue:
                 geneR.append(i*ndd+j)
     r = np.random.permutation(geneR) #shuffle
-    spb=int(len(r)/batchSize)-1
+    spb=int(len(r)/batchSize)-10
     model.fit_generator(generateTrainData(xNormData,nDailyData,
                     nx,ny,r,batchSize),steps_per_epoch=spb, epochs=1)
     
@@ -172,8 +172,29 @@ def RNNTest(model,x_test,y_test,testRatePercent=90,judgeRight=0.01):
                     arrSumValue[itrp,1]+=y_test[idata]
     arrPredictValue=arrSumValue/arrSumN
     arrRightRate=arrSumRight/arrSumN
-    return (predicted,np.hstack((arrPredictValue,arrRightRate,arrSumValue)))
-        
+    return (predicted,np.hstack((arrPredictValue,arrRightRate,arrSumN,arrSumValue)))
+
+def testPredict(predicted,y_test,testRatePercent=90,judgeRight=0.01):
+    pcl=np.percentile(np.abs(predicted),range((100-testRatePercent),testRatePercent))
+    nl=2*testRatePercent-100
+    arrSumValue=np.zeros([nl,2])
+    arrSumRight=np.zeros([nl,2])
+    arrSumN=np.zeros([nl,2])
+    for idata in range(len(predicted)):
+        for itrp in range(nl):
+            if predicted[idata]>pcl[itrp]:
+                arrSumN[itrp,0]+=1
+                arrSumValue[itrp,0]+=y_test[idata]
+                if y_test[idata]>judgeRight:
+                    arrSumRight[itrp,0]+=1
+            if predicted[idata]<-pcl[itrp]:
+                arrSumN[itrp,1]+=1
+                if y_test[idata]<-judgeRight:
+                    arrSumRight[itrp,1]+=1
+                    arrSumValue[itrp,1]+=y_test[idata]
+    arrPredictValue=arrSumValue/arrSumN
+    arrRightRate=arrSumRight/arrSumN
+    return np.hstack((arrPredictValue,arrRightRate,arrSumN,arrSumValue))
 
 #--------------Basic function end-------------
 
@@ -614,7 +635,7 @@ class AIHFIF:
         ny=int(self.minuteYData*60/self.timeSpan+0.1)
         return (nDailyData,nx,ny)
     
-    def TrainModel(self):
+    def TrainModel(self,crate=1):
         print('Start TrainModel...')
         modelfile=self._GetModelFile_()
         tempDataPath=self._GetTempDataPath_()
@@ -626,7 +647,7 @@ class AIHFIF:
         else:
         """
         model=buildRNNModel((nx,xNormData.shape[1]-1),self.nGRU,self.nDense,self.actFunction)
-        trainRNNModel(model,xNormData,nDailyData,nx,ny)
+        trainRNNModel(model,xNormData,nDailyData,nx,ny,cRate=crate)
         model.save(modelfile)
     
     def savePredictFile(self,listPredict,nGRU,nDense,actFunct):
@@ -639,6 +660,23 @@ class AIHFIF:
             i+=1
             fileName=mfileName+'_'+str(i)+'.csv'
         np.savetxt(os.path.join(tempDataPath,fileName),np.array(listPredict).T,fmt="%.4f",delimiter=',')
+        
+    def saveTestResultFile(self,listTestResult,nGRU,nDense,actFunct):
+        testResultName=getTestResultName(nGRU,nDense,actFunct)
+        tempDataPath=self._GetTempDataPath_()
+        mfileName=os.path.join(tempDataPath,testResultName)
+        i=0
+        fileName=mfileName+'_'+str(i)+'.csv'
+        while os.path.exists(fileName):
+            i+=1
+            fileName=mfileName+'_'+str(i)+'.csv'
+        nptr=listTestResult[0]
+        if len(listTestResult)>0:
+            for i in range(1,len(listTestResult)):
+                nptr=np.hstack((nptr,listTestResult[i]))
+        np.savetxt(os.path.join(tempDataPath,fileName),nptr,fmt="%.4f",delimiter=',')
+        
+        getTestResultName
     
     def TestModel(self):
         print('Start TestModel...')
@@ -700,6 +738,7 @@ class AIHFIF:
         if not os.path.exists(modelPath):
             os.makedirs(modelPath)
         listPredict=[yTest]
+        listResult=[]
         for i in range(len(arrCompare)):
             rp=arrCompare[i]
             nNet=arrNNet[i]
@@ -709,10 +748,15 @@ class AIHFIF:
             print(rp,nowGRU,nowDense)
             for cr in rp:
                 trainRNNModel(RNNModel,xNormData,nDailyData,nx,ny,cRate=cr)
-                listPredict.append(RNNModel.predict(xTest).reshape(-1))
+                predict=RNNModel.predict(xTest).reshape(-1)
+                listPredict.append(predict)
+                listResult.append(testPredict(predict,yTest))
             backend.clear_session()
+            self.saveTestResultFile(listResult,nowGRU,nowDense,self.actFunction)
             self.savePredictFile(listPredict,nowGRU,nowDense,self.actFunction)
             listPredict=[yTest]
+            listResult=[]
+        #return listResult
         
     def collectAllData(self,strSDate='19000101'):
         self.updateStdData(strSDate)
@@ -729,39 +773,36 @@ if __name__=='__main__':
     #build up
     workPath='F:\\草稿\\HFI_Model'
     #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
-    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
-    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
+    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
+    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
         cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
-    """
     #collect data
-    HFIF_Model.collectAllData(strSDate='20180601')
+    #HFIF_Model.collectAllData(strSDate='20190101')
     #cal
     
-    HFIF_Model.calTensorData(strEDate='20190105')#Train Data
-    HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-    """
-    HFIF_Model.TrainModel()
-    HFIF_Model.TestModel()
-    """
+    #HFIF_Model.calTensorData(strEDate='20190105')#Train Data
+    #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    
+    #HFIF_Model.TrainModel()
+    #HFIF_Model.TestModel()
     arrCompare=[]
     arrNNet=[]
-    for i in range(5):
+    for i in range(10):
         arrCompare.append([1,0.5])
-        arrNNet.append(0.6)
-    for i in range(5):
-        arrCompare.append([1,0.5])
-        arrNNet.append(0.8)
-    for i in range(5):
-        arrCompare.append([1,0.5])
-        arrNNet.append(1.2)
-    for i in range(5):
-        arrCompare.append([1,0.5])
-        arrNNet.append(1.4)
+        arrNNet.append(1)
+    for i in range(10):
+        arrCompare.append([1,0.2])
+        arrNNet.append(1)
+    for i in range(10):
+        arrCompare.append([1,1,1,1,0.5,0.5,0.5,0.5])
+        arrNNet.append(1)
+    for i in range(10):
+        arrCompare.append([1,1,1,1,0.2,0.2,0.2,0.2])
+        arrNNet.append(1)
+    #HFIF_Model.CompareModels(arrCompare,arrNNet)
     HFIF_Model.deepCompareModels(arrCompare,arrNNet)
-    #HFIF_Model.CompareModels()
-    """
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
