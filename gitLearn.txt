@@ -27,3 +27,22 @@ The key's randomart image is:
 |     o * + o     |
 |      .+B +o.    |
 +----[SHA256]-----+
+
+#f0ebe0 Normal text
+#949494 Comment
+#aad372 String
+#68ccef Number
+#ff7c0a Keyword
+#f48cba Builtin
+#fff468 Definition
+#c69b6d Instance
+
+#9382c9 Current cell
+#2359ff Current line
+#c41e3b Occurrence
+#406b40 Matched parens
+#ff9999 Unmatched parens
+#0000ff Link
+
+#000000 Background
+#717171 Side areas
