@@ -121,7 +121,7 @@ def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,cRate=1,batchSize=100):
             if xNormData[i*ndd+j,iy-len(ny)]>=cyValue or xNormData[i*ndd+j,iy-len(ny)]<=-cyValue:
                 geneR.append(i*ndd+j)
     r = np.random.permutation(geneR) #shuffle
-    spb=int(len(r)/batchSize)-10
+    spb=int(len(r)/batchSize*0.9)
     model.fit_generator(generateTrainData(xNormData,nDailyData,
                     nx,ny,iy,r,batchSize),steps_per_epoch=spb, epochs=1)
     
@@ -537,7 +537,7 @@ class AIHFIF:
                 dictPartStdData=dictStdData[nFlag]
                 npDInduData=getDailyInduData(dictPartStdData,
                       self.dictCodeInfo,dictPastAveAmnt[intDate],self.timeSpan)
-                np.savetxt(induDataFile,npDInduData,fmt="%.2f",delimiter=',')
+                np.savetxt(induDataFile,npDInduData,fmt="%.4f",delimiter=',')
 
 #Build 4:
     def calTensorData(self,isTrain=True,strSDate='19000101',strEDate='99990101'):
@@ -557,7 +557,7 @@ class AIHFIF:
         xData=np.array([])
         intSDate=int(strSDate)
         intEDate=int(strEDate)
-        lenDData=nDailyData-ny[-1]
+        lenDData=nDailyData-ny[-1]-1
         for induDataFile in listInduDataFile:
             fpath=os.path.join(induDataPath,induDataFile)
             (ifilename,extension) = os.path.splitext(induDataFile)
@@ -569,7 +569,7 @@ class AIHFIF:
             yFilePath=os.path.join(self.workPath,'StandardData',
                 str(int(self.timeSpan))+'_sec_span',nameInfo[0],
                 self.indexCode+'_'+nameInfo[1]+'.csv')
-            npyData=np.loadtxt(yFilePath,delimiter=',')[1:,0]
+            npyData=np.loadtxt(yFilePath,delimiter=',')[2:,0]
             yData=np.array([])
             for iy in range(len(ny)):
                 tempY=(npyData[ny[iy]:]/npyData[:-ny[iy]]-1)*10000
@@ -768,10 +768,10 @@ class AIHFIF:
             listResult=[]
         #return listResult
         
-    def collectAllData(self,strSDate='19000101'):
-        #self.updateStdData(strSDate)
-        #self.updateAmntByRaw(strSDate)
-        self.calInduData(strSDate)#minus one row
+    def collectAllData(self,strSDate='19000101',strEDate='99990101'):
+        self.updateStdData(strSDate,strEDate)
+        self.updateAmntByRaw(strSDate,strEDate)
+        self.calInduData(strSDate,strEDate)#minus one row
         
 #---------------Build HFIF Model End--------
 
@@ -791,14 +791,14 @@ if __name__=='__main__':
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
     #collect data
-    #HFIF_Model.collectAllData(strEDate='20190111')
+    HFIF_Model.collectAllData()
     #cal
     
-    #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-    #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106',strEDate='20190111')#Test Data
-    
-    HFIF_Model.TrainModel()
-    HFIF_Model.TestModel()
+    HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
+    HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    for i in range(10):
+        HFIF_Model.TrainModel()
+        HFIF_Model.TestModel()
     """
     arrCompare=[]
     arrNNet=[]
