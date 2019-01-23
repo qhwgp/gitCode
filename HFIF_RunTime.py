@@ -16,12 +16,16 @@ import xlrd, threading,copy,time,datetime,pymssql,sys,csv,os
 from queue import Queue, Empty
 from threading import Thread
 import WindTDFAPI as w
-from keras import models
+from keras import models,backend
 import numpy as np
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 lock = threading.Lock()
 
 global dictForeFactor,sql,dataVendor,datapath
+
+def myLoss(y_true, y_pred):
+    return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
+
 
 class EventManager:
     def __init__(self):
@@ -133,34 +137,39 @@ def ReceiveQuote(pMarketdata):
         lock.release()
     
 class ForeFactor:
-    def __init__(self, StrategyName,PathWei,PathParams,Path1min,Path2min,Path3min,
-                 nrow,ncolumn,ffw1m,ffw2m,ffw3m,ffwt):
-        self.StrategyName = StrategyName
-        self.nrow = nrow
-        self.ncolumn = ncolumn
-        self.ffw1m = ffw1m
-        self.ffw2m = ffw2m
-        self.ffw3m = ffw3m
-        self.ffwt = ffwt
-        self.forerate=0
-        xsheet=xlrd.open_workbook(PathWei).sheets()[0]
-        nrow=xsheet.nrows
-        self.codelist=set()
-        self.dictCodeWeight={}
-        for i in range(nrow):
-            dt=xsheet.row_values(i)
-            self.codelist.add(dt[0])
-            self.dictCodeWeight[dt[0]]=(float(dt[1]),int(dt[2]))
-        self.codelist.add('399905.SZ')
-        self.nparams=np.load(PathParams)[:,1:]
-        self.model_1min=models.load_model(Path1min)
-        self.model_2min=models.load_model(Path2min)
-        self.model_3min=models.load_model(Path3min)
-        self.ndata=np.zeros((self.nrow,self.ncolumn))
+    def __init__(self, workPath,cfgFile):
+        self.workPath = workPath
+        self.cfgFile = cfgFile
+        self.dictCodeInfo = {}
+        self.listModel=[]
+        self.pclMatrix=np.array([])
+        self.listStrategyName=[]
+        #output
+        self.lastInduData=np.array([])
+        self.inputData=np.array([])
         self.pm=np.zeros(3)
-        self.dictquote={}
-        self.lastdictquote={}
-        
+        self._getCfg()
+    
+    def _getCfg(self):
+        data = xlrd.open_workbook(self.cfgFile)
+        sheetCodeInfo = data.sheets()[0]
+        arrShares = sheetCodeInfo.col_values(1)[1:]
+        arrCode = sheetCodeInfo.col_values(0)[1:]
+        arrIndustry = sheetCodeInfo.col_values(2)[1:]
+        nColumn=len(set(arrIndustry))*2
+        nRow=20
+        self.inputData=np.zeros((nRow,nColumn))
+        self.lastInduData=np.zeros(nColumn)
+        for i in range(len(arrCode)):
+            self.dictCodeInfo[arrCode[i]]=[arrShares[i],arrIndustry[i]]
+        (filepath,tempfilename) = os.path.split(self.cfgFile)
+        (filename,extension) = os.path.splitext(tempfilename)
+        modelPath=os.path.join(self.workPath,'cfg',filename)
+        for i in range(3):
+            modelfile=os.path.join(modelPath,'model_'+filename+'_'+str(i+1)+'min.h5')
+            self.listModel.append(models.load_model(modelfile,custom_objects={'myLoss': myLoss}))
+        self.pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
+    
     def CalPM(self):
         crow=np.zeros(self.ncolumn)
         for (symbol,quote) in self.dictquote.items():
