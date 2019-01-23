@@ -582,7 +582,10 @@ class AIHFIF:
             if xData.size==0:
                 xData=npxData
             else:
-                xData=np.vstack((xData,npxData))
+                try:
+                    xData=np.vstack((xData,npxData))
+                except:
+                    print('induDataFile error: '+induDataFile)
         ttFlag='Test'
         if isTrain:
             pclMatrix=np.percentile(np.abs(xData),range(100),axis=0)
@@ -782,8 +785,8 @@ if __name__=='__main__':
     #build up
     workPath='F:\\草稿\\HFI_Model'
     #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
-    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
-    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
+    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
+    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
         #cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
@@ -791,11 +794,11 @@ if __name__=='__main__':
     HFIF_Model=AIHFIF(workPath,cfgFile)
     dictCodeInfo=HFIF_Model.dictCodeInfo
     #collect data
-    HFIF_Model.collectAllData()
+    #HFIF_Model.collectAllData()
     #cal
     
-    HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-    HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
+    #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
     for i in range(10):
         HFIF_Model.TrainModel()
         HFIF_Model.TestModel()
