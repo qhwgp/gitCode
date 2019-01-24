@@ -7,9 +7,9 @@ Created on Fri Jan  4 09:02:36 2019
 push to git in office
 """
 
-import git
+import git,datetime
 
-strUpdateInfo='by office'
+strUpdateInfo='by office in '+datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 gitPath='F:/草稿/gitCode/gitCode'
 #-------------------------------------------
