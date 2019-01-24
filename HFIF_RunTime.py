@@ -162,6 +162,9 @@ class ForeFactor:
         self.lastInduData=np.zeros(nColumn)
         for i in range(len(arrCode)):
             self.dictCodeInfo[arrCode[i]]=[arrShares[i],arrIndustry[i]]
+        #sheetCfg=data.sheets()[1]
+        arrCfg=data.sheets()[1].col_values(1)
+        self.minuteYData=list(map(int,arrCfg[6].split(',')))
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
         modelPath=os.path.join(self.workPath,'cfg',filename)

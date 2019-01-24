@@ -63,11 +63,11 @@ def strToInt(strDate):
     return int(lDate[0])*10000+int(lDate[1])*100+int(lDate[2])
 
 #Basic 3:
-def calPercentile(xValue,arrPercentile): #len(arrPercentile)=100,upscane
+def calPercentile(xValue,arrPercentile,st=0): #len(arrPercentile)=100,upscane
     isfind=False
     abv=abs(xValue)
-    for i in range(100):
-        if abv<(arrPercentile[i]+0.0001):
+    for i in range(st,100):
+        if abv<(arrPercentile[i]+0.00001):
             isfind=True
             break
     if isfind:
@@ -76,12 +76,19 @@ def calPercentile(xValue,arrPercentile): #len(arrPercentile)=100,upscane
         result=1
     return result*np.sign(xValue)
 
+def calPcl(xValue,arrPercentile,rng=[0,99]):
+    if xValue<0:
+        return -calPcl(-xValue,arrPercentile)
+    if rng[1]-rng[0]<=1 or xValue>arrPercentile[rng[1]]:
+        return rng[1]
+    else:
+        md=int(np.mean(rng))
+        if xValue<=arrPercentile[md]:
+            return calPcl(xValue,arrPercentile,rng=[rng[0],md])
+        else:
+            return calPcl(xValue,arrPercentile,rng=[md,rng[1]])
+
 #Basic 4:
-    """
-def getModelName(nGRU,nDense,actFlag):
-    return 'model.'+'_'.join(list(map(str,nGRU)))+'.'+\
-    '_'.join(list(map(str,nDense)))+'.'+actFlag+'.h5'
-    """
 def getSaveName(fStr,nGRU,nDense,actFlag):
     try:
         strnGRU='_'.join(list(map(str,nGRU)))
@@ -327,6 +334,8 @@ def getNormInduData(xData,pclMatrix):
         arrPercentile=pclMatrix[:,j]
         for i in range(xShape[0]):
             normInduData[i,j]=calPercentile(xData[i,j],arrPercentile)
+            #normInduData[i,j]=calPcl(xData[i,j],arrPercentile)
+            print(i)
     return normInduData
 
 #----------Model step function end------------
@@ -593,17 +602,11 @@ class AIHFIF:
             ttFlag='Train'
         else:
             pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
+        ttime = time.time()
         xNormData=getNormInduData(xData,pclMatrix)
+        print('getNormInduData minute: %0.2f minutes'%((time.time() - ttime)/60))
         np.save(os.path.join(normDataPath,'norm'+ttFlag+'Data.npy'),xNormData)
-    """
-    def _GetModelPath_(self):
-        (filepath,tempfilename) = os.path.split(self.cfgFile)
-        (filename,extension) = os.path.splitext(tempfilename)
-        modelPath=os.path.join(self.workPath,'model',filename)
-        if not os.path.exists(modelPath):
-            os.makedirs(modelPath)
-        return modelPath
-    """
+
     def _GetModelFile_(self):
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
@@ -682,8 +685,6 @@ class AIHFIF:
             for i in range(1,len(listTestResult)):
                 nptr=np.hstack((nptr,listTestResult[i]))
         np.savetxt(os.path.join(tempDataPath,fileName),nptr,fmt="%.4f",delimiter=',')
-        
-        #getTestResultName
     
     def TestModel(self):
         print('Start TestModel...')
@@ -692,84 +693,11 @@ class AIHFIF:
         for modelfile in listModelfile:
             listModel.append(models.load_model(modelfile,custom_objects={'myLoss': myLoss}))
         normDataPath=self._GetNormDataPath_()
-        #tempDataPath=self._GetTempDataPath_()
         normTestData=np.load(os.path.join(normDataPath,'normTestData.npy'))
         xTest,yTest=getTensorData(normTestData,*self._getModelParam_())
         predict,testResult=RNNTest(listModel,xTest,yTest)
-        """
-        fileName='testResult_'+datetime.datetime.now().strftime("%Y%m%d")+'_'
-        fileName=os.path.join(tempDataPath,fileName)
-        i=0
-        while os.path.exists(fileName+str(i)+'.csv'):
-            i+=1
-        fileName=fileName+str(i)+'.csv'
-        np.savetxt(fileName,testResult,fmt="%.4f",delimiter=',')
-        """
         self.saveTempFile('testResult.',testResult,self.minuteXData,self.minuteYData,self.actFunction)
         self.saveTempFile('predict.',predict,self.minuteXData,self.minuteYData,self.actFunction)
-        
-    def CompareModels(self,rRange=2,nNet=4,nRepeat=4):
-        tempDataPath=self._GetTempDataPath_()
-        normTestData=np.load(os.path.join(tempDataPath,'normTestData.npy'))
-        xTest,yTest=getTensorData(normTestData,*self._getModelParam_())
-        xNormData=np.load(os.path.join(tempDataPath,'normTrainData.npy'))
-        nDailyData,nx,ny=self._getModelParam_()
-        npGRU=np.array(self.nGRU)
-        npDense=np.array(self.nDense)
-        modelPath=self._GetModelPath_()
-        if not os.path.exists(modelPath):
-            os.makedirs(modelPath)
-        listPredict=[yTest]
-        for nn in range(nNet):
-            nowGRU=list((npGRU*(3*nn/2/nNet+0.5)).astype(int))
-            nowDense=list((npDense*(3*nn/2/nNet+0.5)).astype(int))
-            modelName=getModelName(nowGRU,nowDense,self.actFunction)
-            modelFile=os.path.join(modelPath,modelName)
-            if not os.path.exists(modelFile):
-                RNNModel=buildRNNModel((nx,xNormData.shape[1]-1),self.actFunction)
-            else:
-                RNNModel=models.load_model(modelFile,custom_objects={'myLoss': myLoss})
-            print(nowGRU,nowDense)
-            for nr in range(nRepeat):
-                print(nn,nr)
-                trainRNNModel(RNNModel,xNormData,nDailyData,nx,ny,cRate=2**(-nr))
-                listPredict.append(RNNModel.predict(xTest).reshape(-1))
-            RNNModel.save(modelFile)
-            backend.clear_session()
-            self.savePredictFile(listPredict,nowGRU,nowDense,self.actFunction)
-            listPredict=[yTest]
-            
-    def deepCompareModels(self,arrCompare=[[1,0.5],[1,0.5]],arrNNet=[1,1]):
-        tempDataPath=self._GetTempDataPath_()
-        normTestData=np.load(os.path.join(tempDataPath,'normTestData.npy'))
-        xTest,yTest=getTensorData(normTestData,*self._getModelParam_())
-        xNormData=np.load(os.path.join(tempDataPath,'normTrainData.npy'))
-        nDailyData,nx,ny=self._getModelParam_()
-        npGRU=np.array(self.nGRU)
-        npDense=np.array(self.nDense)
-        modelPath=self._GetModelPath_()
-        if not os.path.exists(modelPath):
-            os.makedirs(modelPath)
-        listPredict=[yTest]
-        listResult=[]
-        for i in range(len(arrCompare)):
-            rp=arrCompare[i]
-            nNet=arrNNet[i]
-            nowGRU=list((npGRU*nNet).astype(int))
-            nowDense=list((npDense*nNet).astype(int))
-            RNNModel=buildRNNModel((nx,xNormData.shape[1]-1),self.actFunction)
-            print(rp,nowGRU,nowDense)
-            for cr in rp:
-                trainRNNModel(RNNModel,xNormData,nDailyData,nx,ny,cRate=cr)
-                predict=RNNModel.predict(xTest).reshape(-1)
-                listPredict.append(predict)
-                listResult.append(testPredict(predict,yTest))
-            backend.clear_session()
-            self.saveTestResultFile(listResult,nowGRU,nowDense,self.actFunction)
-            self.savePredictFile(listPredict,nowGRU,nowDense,self.actFunction)
-            listPredict=[yTest]
-            listResult=[]
-        #return listResult
         
     def collectAllData(self,strSDate='19000101',strEDate='99990101'):
         self.updateStdData(strSDate,strEDate)
@@ -797,27 +725,11 @@ if __name__=='__main__':
     #HFIF_Model.collectAllData()
     #cal
     
-    #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-    #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
+    HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    """
     for i in range(10):
         HFIF_Model.TrainModel()
         HFIF_Model.TestModel()
-    """
-    arrCompare=[]
-    arrNNet=[]
-    for i in range(10):
-        arrCompare.append([1,0.5])
-        arrNNet.append(1)
-    for i in range(10):
-        arrCompare.append([1,0.2])
-        arrNNet.append(1)
-    for i in range(10):
-        arrCompare.append([1,1,1,1,0.5,0.5,0.5,0.5])
-        arrNNet.append(1)
-    for i in range(10):
-        arrCompare.append([1,1,1,1,0.2,0.2,0.2,0.2])
-        arrNNet.append(1)
-    #HFIF_Model.CompareModels(arrCompare,arrNNet)
-    HFIF_Model.deepCompareModels(arrCompare,arrNNet)
     """
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
