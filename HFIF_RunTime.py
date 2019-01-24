@@ -21,10 +21,7 @@ import numpy as np
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-lock = threading.Lock()
-listForeFactor=[]
-dictQuote={}
-global sql,dataVendor,eventManager
+
 
 def myLoss(y_true, y_pred):
     return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
@@ -206,8 +203,9 @@ class ForeFactor:
 if __name__ == '__main__':
     #os
     eventManager = EventManager()
-    dttime=datetime.datetime.now().date().strftime('%Y%m%d')
-
+    lock = threading.Lock()
+    listForeFactor=[]
+    dictQuote={}
     #SQL
     sql=MSSQL(host='10.200',user='s',pwd='s',db='s')
     if not sql.Connect():
