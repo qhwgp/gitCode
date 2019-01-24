@@ -12,20 +12,22 @@ Created on Wed Jun 28 09:18:19 2017
 @author: wap
 """
 
-import xlrd, threading,copy,time,datetime,pymssql,sys,csv,os
+import xlrd, threading,copy,time,datetime,pymssql,sys,os
 from queue import Queue, Empty
 from threading import Thread
 import WindTDFAPI as w
 from keras import models,backend
 import numpy as np
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-lock = threading.Lock()
 
-global dictForeFactor,sql,dataVendor,datapath
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+lock = threading.Lock()
+listForeFactor=[]
+dictQuote={}
+global sql,dataVendor,eventManager
 
 def myLoss(y_true, y_pred):
     return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
-
 
 class EventManager:
     def __init__(self):
@@ -69,7 +71,7 @@ class MyEvent:
         self.type_ = Eventtype      # 事件类型
         self.data = Data          # 字典用于保存具体的事件数据
         
-eventManager = EventManager()
+
 
 class MSSQL:
 
@@ -108,31 +110,28 @@ def TDFCallBack(pMarketdata):
     eventManager.SendEvent(MyEvent("quote",pMarketdata))
 
 def MyIniData(basicparams):
-    global dictForeFactor
+    global listForeFactor
     prm=basicparams.data
-    dictForeFactor[prm[0]]=ForeFactor(*prm)
-    dataVendor.RegisterSymbol(dictForeFactor[prm[0]].codelist)
+    listForeFactor.append(ForeFactor(*prm))
 
 def MyNormData(normEvent):
-    global dictForeFactor,sql
-
+    global listForeFactor,lock,sql
     lock.acquire()
     try:
-        for key in dictForeFactor:
-            dictForeFactor[key].CalPM()
+        for ff in listForeFactor:
+            ff.CalPM()
             #pm=dictForeFactor[key].pm
             #sql.UpdateFF(dictForeFactor[key].StrategyName,pm[0],pm[1],pm[2])
     finally:
         lock.release()
         
 def ReceiveQuote(pMarketdata):
+    global dictQuote,lock
     dt =pMarketdata.data
     lock.acquire()
     try:
         code=bytes.decode(dt.szWindCode)
-        for key in dictForeFactor:
-            if code in dictForeFactor[key].codelist:
-                dictForeFactor[key].dictquote[code]=(dt.nTime/1000,dt.nMatch/10000,dt.iTurnover/1000000)
+        dictQuote[code]=(dt.nTime/1000,dt.nMatch/10000,dt.iTurnover/1000000)
     finally:
         lock.release()
     
@@ -162,9 +161,8 @@ class ForeFactor:
         self.lastInduData=np.zeros(nColumn)
         for i in range(len(arrCode)):
             self.dictCodeInfo[arrCode[i]]=[arrShares[i],arrIndustry[i]]
-        #sheetCfg=data.sheets()[1]
         arrCfg=data.sheets()[1].col_values(1)
-        self.minuteYData=list(map(int,arrCfg[6].split(',')))
+        self.listStrategyName=arrCfg[10].split(',')
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
         modelPath=os.path.join(self.workPath,'cfg',filename)
@@ -206,12 +204,10 @@ class ForeFactor:
  
         
 if __name__ == '__main__':
-    dictForeFactor={}
     #os
+    eventManager = EventManager()
     dttime=datetime.datetime.now().date().strftime('%Y%m%d')
-    datapath='D:\\data\\'+dttime
-    if not os.path.exists(datapath):
-        os.makedirs(datapath)
+
     #SQL
     sql=MSSQL(host='10.200',user='s',pwd='s',db='s')
     if not sql.Connect():

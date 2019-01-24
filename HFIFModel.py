@@ -727,9 +727,7 @@ if __name__=='__main__':
     
     HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
     HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-    """
     for i in range(10):
         HFIF_Model.TrainModel()
         HFIF_Model.TestModel()
-    """
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
