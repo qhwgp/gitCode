@@ -9,12 +9,12 @@ push to git
 
 import git,datetime,os
 
-strUpdateInfo='by office at '+datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+strDT=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+strUpdateInfo='by office at '+strDT
 gitPath='F:/草稿/gitCode/gitCode'
 if not os.path.exists(gitPath):
     gitPath='C:/Users/WAP/gitCode'
-    strUpdateInfo='by home at '+datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    strUpdateInfo='by home at '+strDT
 #-------------------------------------------
 repo = git.Repo(gitPath)
 fileList=[]
