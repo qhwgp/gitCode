@@ -120,7 +120,7 @@ def buildRNNModel(xShape,actFlag='tanh'):
 def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,cRate=1,batchSize=100):
     print('Start fit RNN Model...')
     geneR=[]
-    ndd=nDailyData-ny[-1]
+    ndd=nDailyData-ny[-1]-1
     nday=int(xNormData.shape[0]/ndd)
     cyValue=np.percentile(np.abs(xNormData[:,-(len(ny)-iy)]),(1-cRate)*100)
     for i in range(nday):
@@ -128,7 +128,7 @@ def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,cRate=1,batchSize=100):
             if xNormData[i*ndd+j,iy-len(ny)]>=cyValue or xNormData[i*ndd+j,iy-len(ny)]<=-cyValue:
                 geneR.append(i*ndd+j)
     r = np.random.permutation(geneR) #shuffle
-    spb=int(len(r)/batchSize*0.9)
+    spb=int(len(r)/batchSize)
     model.fit_generator(generateTrainData(xNormData,nDailyData,
                     nx,ny,iy,r,batchSize),steps_per_epoch=spb, epochs=1)
     
@@ -313,13 +313,13 @@ def getDailyInduData(dictPartStdData,dictCodeInfo,dictdailyPastAveAmnt,timeSpan)
 
 #step3
 def getTensorData(xNormData,nDailyData,nx,ny):
-    lenDData=nDailyData-ny[-1]
+    lenDData=nDailyData-ny[-1]-1
     ndday=int(xNormData.shape[0]/lenDData)
     xData=[]
     yData=[]
     for idday in range(ndday):
         for i in range(nx,lenDData):
-            n=(idday-1)*lenDData+i
+            n=idday*lenDData+i
             xData.append(xNormData[(n-nx):n,:-len(ny)])
             yData.append(xNormData[n,-len(ny):])
     xData=np.array(xData)
@@ -335,7 +335,6 @@ def getNormInduData(xData,pclMatrix):
         for i in range(xShape[0]):
             normInduData[i,j]=calPercentile(xData[i,j],arrPercentile)
             #normInduData[i,j]=calPcl(xData[i,j],arrPercentile)
-            print(i)
     return normInduData
 
 #----------Model step function end------------
@@ -713,8 +712,8 @@ if __name__=='__main__':
     #build up
     workPath='F:\\草稿\\HFI_Model'
     #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
-    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
-    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
+    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
+    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
         #cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
@@ -725,9 +724,9 @@ if __name__=='__main__':
     #HFIF_Model.collectAllData()
     #cal
     
-    HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-    HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-    for i in range(10):
+    #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
+    #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    for i in range(20):
         HFIF_Model.TrainModel()
         HFIF_Model.TestModel()
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))

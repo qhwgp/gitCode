@@ -26,6 +26,17 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 def myLoss(y_true, y_pred):
     return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
 
+def getCfgFareFactor(ffPath):
+    cfgFile=os.path.join(ffPath,'cfgForeFactor.csv')
+    cfgData=tuple(map(str,np.loadtxt(cfgFile,dtype=str)))
+    return cfgData[:4],cfgData[4:]
+
+def registerAllSymbol():
+    global dataVendor,listForeFactor
+    codelist={}
+    for ff in listForeFactor:
+        codelist=codelist|set(ff.dictCodeInfo.keys())
+    dataVendor.RegisterSymbol(codelist)
 class EventManager:
     def __init__(self):
         self.__eventQueue = Queue()
@@ -106,11 +117,6 @@ class MSSQL:
 def TDFCallBack(pMarketdata):
     eventManager.SendEvent(MyEvent("quote",pMarketdata))
 
-def MyIniData(basicparams):
-    global listForeFactor
-    prm=basicparams.data
-    listForeFactor.append(ForeFactor(*prm))
-
 def MyNormData(normEvent):
     global listForeFactor,lock,sql
     lock.acquire()
@@ -122,9 +128,9 @@ def MyNormData(normEvent):
     finally:
         lock.release()
         
-def ReceiveQuote(pMarketdata):
+def ReceiveQuote(quoteEvent):
     global dictQuote,lock
-    dt =pMarketdata.data
+    dt =quoteEvent.data
     lock.acquire()
     try:
         code=bytes.decode(dt.szWindCode)
@@ -169,7 +175,7 @@ class ForeFactor:
         self.pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
     
     def CalPM(self):
-        crow=np.zeros(self.ncolumn)
+        crow=np.zeros_like(self.lastInduData)
         for (symbol,quote) in self.dictquote.items():
             if (symbol not in self.lastDictQuote) or (symbol not in self.dictCodeWeight):
                 continue
@@ -201,52 +207,47 @@ class ForeFactor:
  
         
 if __name__ == '__main__':
-    #os
+    #global
     eventManager = EventManager()
     lock = threading.Lock()
     listForeFactor=[]
     dictQuote={}
+    w.SetMarketDataCallBack(TDFCallBack)
+    dataVendor = w.WindMarketVendor("TDFConfig.ini", "TDFAPI25.dll")
+    
+    #config
+    cfgPath='F:\\草稿\\HFI_Model'
+    cfgSQL,listCfgForeFactor=getCfgFareFactor(cfgPath)
+    fPath=os.path.join(cfgPath,'cfg')
+    for cfgFF in listCfgForeFactor:
+        listForeFactor.append(ForeFactor(fPath,cfgFF))
+    
     #SQL
-    sql=MSSQL(host='10.200',user='s',pwd='s',db='s')
-    if not sql.Connect():
-        print('Connet Error')
-        sys.exit(0)
+    sql=MSSQL(*cfgSQL)
+    
+    nConnect=0
+    while not sql.Connect():
+        print('SQL Connet Error: ',nConnect)
+        nConnect+=1
+        time.sleep(5)
 
     #Event
     eventManager.AddEventListener("quote",ReceiveQuote)
-    eventManager.AddEventListener("iniData",MyIniData)
     eventManager.AddEventListener("normData",MyNormData)
     eventManager.Start()
     
-    #MarketData
-    w.SetMarketDataCallBack(TDFCallBack)
-    dataVendor = w.WindMarketVendor("TDFConfig.ini", "TDFAPI25.dll")
     nConnect=0
     while (dataVendor.Reconnect() is False):
         print("Error nConnect: ",nConnect)
         nConnect+=1
         time.sleep(5)
+    registerAllSymbol()
     
-    #Initual Data
-    path="D:\\CalForeFactor\\"
-    StrategyName='QUOTER_510500'
-    PathWei=path+"ZZ500wei.xlsx"
-    PathParams=path+"nparams.npy"
-    Path1min=path+"FF_1min_3level_36.h5"
-    Path2min=path+"FF_2min_3level_36.h5"
-    Path3min=path+"FF_3min_3level_36.h5"
-    nrow=36
-    ncolumn=16
-    ffw1m=0.7
-    ffw2m=0.3
-    ffw3m=0.1
-    ffwt=0.7
-    prm=(StrategyName,PathWei,PathParams,Path1min,Path2min,Path3min,
-                 nrow,ncolumn,ffw1m,ffw2m,ffw3m,ffwt)
-    eventManager.SendEvent(MyEvent("iniData",prm))
-    
+    for i in range(20):
+        eventManager.SendEvent(MyEvent("normData",False))
+        time.sleep(5)
     while True:
-        eventManager.SendEvent(MyEvent("normData",""))
+        eventManager.SendEvent(MyEvent("normData",True))
         time.sleep(5)
     
     
