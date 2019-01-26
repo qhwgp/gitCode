@@ -133,10 +133,12 @@ def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize=1000):
 def generateTrainData(xNormData,nDailyData,nx,ny,iy,r,batchSize):
     xData=[]
     yData=[]
+    i=0
     for n in r:
+        i+=1
         xData.append(xNormData[(n-nx):n,:-len(ny)])
         yData.append(xNormData[n,iy-len(ny)])
-        if n%batchSize==batchSize-1:
+        if i%batchSize==batchSize-1:
             xData=np.array(xData)
             yData=np.array(yData)
             yield (xData,yData)
@@ -716,8 +718,8 @@ if __name__=='__main__':
     #build up
     workPath='F:\\草稿\\HFI_Model'
     #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
-    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
-    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
+    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
+    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
         #cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
@@ -728,9 +730,9 @@ if __name__=='__main__':
     #HFIF_Model.collectAllData()
     #cal
     
-    #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-    HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-    #for i in range(20):
-    HFIF_Model.TrainModel()
-    HFIF_Model.TestModel()
+    #.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
+    #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    for i in range(10):
+        HFIF_Model.TrainModel()
+        HFIF_Model.TestModel()
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
