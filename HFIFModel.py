@@ -117,16 +117,14 @@ def buildRNNModel(xShape,actFlag='tanh'):
     return model
 
 #Basic 5:
-def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,cRate=1,batchSize=100):
+def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize=1000):
     print('Start fit RNN Model...')
     geneR=[]
     ndd=nDailyData-ny[-1]-1
     nday=int(xNormData.shape[0]/ndd)
-    cyValue=np.percentile(np.abs(xNormData[:,-(len(ny)-iy)]),(1-cRate)*100)
     for i in range(nday):
         for j in range(nx,ndd):
-            if xNormData[i*ndd+j,iy-len(ny)]>=cyValue or xNormData[i*ndd+j,iy-len(ny)]<=-cyValue:
-                geneR.append(i*ndd+j)
+            geneR.append(i*ndd+j)
     r = np.random.permutation(geneR) #shuffle
     spb=int(len(r)/batchSize)
     model.fit_generator(generateTrainData(xNormData,nDailyData,
@@ -320,8 +318,8 @@ def getTensorData(xNormData,nDailyData,nx,ny):
     for idday in range(ndday):
         for i in range(nx,lenDData):
             n=idday*lenDData+i
-            xData.append(xNormData[(n-nx):n,:-len(ny)])
-            yData.append(xNormData[n,-len(ny):])
+            xData.append(xNormData[(n-nx):n,:-len(ny)-1])
+            yData.append(xNormData[n,-len(ny)-1:])
     xData=np.array(xData)
     yData=np.array(yData)
     return (xData,yData)
@@ -563,6 +561,7 @@ class AIHFIF:
         listInduDataFile=os.listdir(induDataPath)
         nDailyData,nx,ny=self._getModelParam_()
         xData=np.array([])
+        rawYData=np.array([])
         intSDate=int(strSDate)
         intEDate=int(strEDate)
         lenDData=nDailyData-ny[-1]-1
@@ -587,11 +586,14 @@ class AIHFIF:
                 else:
                     yData=np.hstack((yData,tempY))
             npxData=np.hstack((npxData,yData))
+            npyData=npyData[:lenDData]
             if xData.size==0:
                 xData=npxData
+                rawYData=npyData
             else:
                 try:
                     xData=np.vstack((xData,npxData))
+                    rawYData=np.hstack((rawYData,npyData))
                 except:
                     print('induDataFile error: '+induDataFile)
         ttFlag='Test'
@@ -603,6 +605,8 @@ class AIHFIF:
             pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
         ttime = time.time()
         xNormData=getNormInduData(xData,pclMatrix)
+        if not isTrain:
+            xNormData=np.hstack((xNormData,rawYData.reshape((-1,1))))
         print('getNormInduData minute: %0.2f minutes'%((time.time() - ttime)/60))
         np.save(os.path.join(normDataPath,'norm'+ttFlag+'Data.npy'),xNormData)
 
@@ -643,7 +647,7 @@ class AIHFIF:
         ny=np.array(self.minuteYData)*toInt(60/self.timeSpan)
         return (nDailyData,nx,ny)
     
-    def TrainModel(self,crate=1):
+    def TrainModel(self):
         listModelFile=self._GetModelFile_()
         normDataPath=self._GetNormDataPath_()
         xNormData=np.load(os.path.join(normDataPath,'normTrainData.npy'))
@@ -651,12 +655,12 @@ class AIHFIF:
         for iy in range(len(ny)):
             modelfile=listModelFile[iy]
             if os.path.exists(modelfile):
-                print('Load TrainModel...')
+                print('Load TrainModel...'+modelfile.split('\\')[-1])
                 model=models.load_model(modelfile,custom_objects={'myLoss': myLoss})
             else:
-                print('Start TrainModel...')
+                print('Start TrainModel...'+modelfile)
                 model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.actFunction)
-            trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,cRate=crate)
+            trainRNNModel(model,xNormData,nDailyData,nx,ny,iy)
             model.save(modelfile)
     
     def saveTempFile(self,fStr,npPredict,nGRU,nDense,actFunct):
@@ -725,8 +729,8 @@ if __name__=='__main__':
     #cal
     
     #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-    #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-    for i in range(20):
-        HFIF_Model.TrainModel()
-        HFIF_Model.TestModel()
+    HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+    #for i in range(20):
+    HFIF_Model.TrainModel()
+    HFIF_Model.TestModel()
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
