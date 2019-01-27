@@ -12,12 +12,13 @@ Created on Wed Jun 28 09:18:19 2017
 @author: wap
 """
 
-import xlrd, threading,copy,time,datetime,pymssql,sys,os
+import xlrd, threading,copy,datetime,os,pymssql#,time,sys
 from queue import Queue, Empty
 from threading import Thread
-import WindTDFAPI as w
+#import WindTDFAPI as w
 from keras import models,backend
 import numpy as np
+import pandas as pd
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -30,6 +31,12 @@ def getCfgFareFactor(ffPath):
     cfgFile=os.path.join(ffPath,'cfgForeFactor.csv')
     cfgData=tuple(map(str,np.loadtxt(cfgFile,dtype=str)))
     return cfgData[:4],cfgData[4:]
+
+def getTSAvgAmnt(pdAvgAmntFile):
+    global dictTSAvgAmnt,timeSpan
+    pdAvgAmnt=pd.read_csv(pdAvgAmntFile,header=0,index_col=0,engine='python')
+    for code in pdAvgAmnt.index:
+        dictTSAvgAmnt[code]=pdAvgAmnt.loc[code][0]/(14400/timeSpan)
 
 def registerAllSymbol():
     global dataVendor,listForeFactor
@@ -143,9 +150,10 @@ class ForeFactor:
         self.workPath = workPath
         self.cfgFile = cfgFile
         self.dictCodeInfo = {}
+        self.nIndu=0
         self.listModel=[]
-        self.pclMatrix=np.array([])
         self.listStrategyName=[]
+        self.pclMatrix=np.array([])
         #output
         self.lastInduData=np.array([])
         self.inputData=np.array([])
@@ -153,49 +161,54 @@ class ForeFactor:
         self._getCfg()
     
     def _getCfg(self):
-        data = xlrd.open_workbook(self.cfgFile)
+        global nXData,timeSpan
+        data = xlrd.open_workbook(os.path.join(self.workPath,self.cfgFile))
         sheetCodeInfo = data.sheets()[0]
         arrShares = sheetCodeInfo.col_values(1)[1:]
         arrCode = sheetCodeInfo.col_values(0)[1:]
         arrIndustry = sheetCodeInfo.col_values(2)[1:]
-        nColumn=len(set(arrIndustry))*2
-        nRow=20
-        self.inputData=np.zeros((nRow,nColumn))
-        self.lastInduData=np.zeros(nColumn)
+        self.nIndu=len(set(arrIndustry))
+        nRow=nXData
+        self.inputData=np.zeros((nRow,self.nIndu*2))
+        #self.lastInduData=np.zeros(self.nIndu*2)
+        #self.avgAmnt=np.zeros(self.nIndu)
         for i in range(len(arrCode)):
             self.dictCodeInfo[arrCode[i]]=[arrShares[i],arrIndustry[i]]
         arrCfg=data.sheets()[1].col_values(1)
         self.listStrategyName=arrCfg[10].split(',')
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
-        modelPath=os.path.join(self.workPath,'cfg',filename)
+        modelPath=os.path.join(self.workPath,filename)
         for i in range(3):
-            modelfile=os.path.join(modelPath,'model_'+filename+'_'+str(i+1)+'min.h5')
+            modelfile=os.path.join(modelPath,'model_'+filename+'_3min_'+str(i+1)+'min.h5')
             self.listModel.append(models.load_model(modelfile,custom_objects={'myLoss': myLoss}))
         self.pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
+        getTSAvgAmnt(os.path.join(modelPath,'avgAmnt_'+filename+'.csv'))
     
     def CalPM(self):
+        global dictQuote,dictTSAvgAmnt
         crow=np.zeros_like(self.lastInduData)
-        for (symbol,quote) in self.dictquote.items():
-            if (symbol not in self.lastDictQuote) or (symbol not in self.dictCodeWeight):
+        npAveTSpanAmnt=np.zeros(self.nIndu)
+        for (symbol,weiIndu) in self.dictCodeInfo.items():
+            if (symbol not in dictQuote) or (symbol not in dictTSAvgAmnt):
                 continue
-            ncol=self.dictCodeWeight[symbol][1]-1
-            wei=self.dictCodeWeight[symbol][0]
-            lpri=self.lastDictQuote[symbol][1]
-            lamt=self.lastDictQuote[symbol][2]
-            
-            pri=self.dictquote[symbol][1]
-            amt=self.dictquote[symbol][2]
-            if lpri<0.01 or lamt<0.01 or pri<0.01 or amt<0.01:
-                continue
-            ret=(pri/lpri-1)*wei*100
-            damt=(amt-lamt)*wei
-            crow[2*ncol]+=ret
-            crow[2*ncol+1]+=damt
+            wei=weiIndu[0]
+            intIndu=int(weiIndu[1]+0.1)
+            lpri=dictQuote[symbol][1]
+            lamt=dictQuote[symbol][2]
+            crow[:,2*intIndu-2]+=wei*lpri
+            crow[:,2*intIndu-1]+=lamt
+            npAveTSpanAmnt[intIndu]+=dictTSAvgAmnt[symbol]
+        
+            if lpri<0.01:
+                print('error quote info: '+symbol)
+
         self.lastDictQuote=copy.deepcopy(self.dictquote)
-        for i in range(self.ncolumn):
-            crow[i]=(crow[i]-self.nparams[0][i])/self.nparams[1][i]/2
-        self.ndata=np.row_stack((self.ndata[1:,:],crow))
+        for i in range(self.nIndu):
+            crow[2*i]=(crow[2*i]/self.lastInduData[2*i]-1)*10000
+            crow[2*i+1]=crow[2*i+1]/npAveTSpanAmnt[i]
+        self.ndata=np.vstack((self.ndata[1:,:],crow))
+        #wap
         p1m=self.model_1min.predict(self.ndata.reshape(1,self.nrow,self.ncolumn))[0,0]
         p2m=self.model_2min.predict(self.ndata.reshape(1,self.nrow,self.ncolumn))[0,0]
         p3m=self.model_3min.predict(self.ndata.reshape(1,self.nrow,self.ncolumn))[0,0]
@@ -212,11 +225,14 @@ if __name__ == '__main__':
     lock = threading.Lock()
     listForeFactor=[]
     dictQuote={}
-    w.SetMarketDataCallBack(TDFCallBack)
-    dataVendor = w.WindMarketVendor("TDFConfig.ini", "TDFAPI25.dll")
+    dictTSAvgAmnt={}
+    timeSpan=3
+    nXData=20
     
     #config
     cfgPath='F:\\草稿\\HFI_Model'
+    if not os.path.exists(cfgPath):
+        cfgPath='C:\\Users\\WAP\\Documents\\HFI_Model'
     cfgSQL,listCfgForeFactor=getCfgFareFactor(cfgPath)
     fPath=os.path.join(cfgPath,'cfg')
     for cfgFF in listCfgForeFactor:
@@ -224,7 +240,7 @@ if __name__ == '__main__':
     
     #SQL
     sql=MSSQL(*cfgSQL)
-    
+    """
     nConnect=0
     while not sql.Connect():
         print('SQL Connet Error: ',nConnect)
@@ -236,6 +252,8 @@ if __name__ == '__main__':
     eventManager.AddEventListener("normData",MyNormData)
     eventManager.Start()
     
+    w.SetMarketDataCallBack(TDFCallBack)
+    dataVendor = w.WindMarketVendor("TDFConfig.ini", "TDFAPI25.dll")
     nConnect=0
     while (dataVendor.Reconnect() is False):
         print("Error nConnect: ",nConnect)
@@ -249,5 +267,5 @@ if __name__ == '__main__':
     while True:
         eventManager.SendEvent(MyEvent("normData",True))
         time.sleep(5)
-    
+    """
     

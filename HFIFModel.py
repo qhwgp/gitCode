@@ -620,11 +620,9 @@ class AIHFIF:
             ttFlag='Train'
         else:
             pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
-        ttime = time.time()
         xNormData=getNormInduData(xData,pclMatrix)
         if not isTrain:
             xNormData=np.hstack((xNormData,rawYData.reshape((-1,1))))
-        print('getNormInduData minute: %0.2f minutes'%((time.time() - ttime)/60))
         np.save(os.path.join(normDataPath,'norm'+ttFlag+'Data.npy'),xNormData)
 
     def _GetModelFile_(self):
