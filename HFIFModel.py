@@ -117,7 +117,7 @@ def buildRNNModel(xShape,actFlag='tanh'):
     return model
 
 #Basic 5:
-def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize=1000):
+def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize=10000):
     print('Start fit RNN Model...')
     geneR=[]
     ndd=nDailyData-ny[-1]-1
@@ -146,19 +146,25 @@ def generateTrainData(xNormData,nDailyData,nx,ny,iy,r,batchSize):
             yData=[]
     
 #Basic 6:
-def RNNTest(listModel,x_test,y_test,testRatePercent=90,judgeRight=0.01):
+def RNNTest(listModel,x_test,y_test):#,testRatePercent=90,judgeRight=0.01):
     npPredict=y_test
-    npTestResult=np.array([])
+    #npTestResult=np.array([])
+    pScore=[]
+    ly=len(y_test)
     for i in range(len(listModel)):
         model=listModel[i]
-        predicted = model.predict(x_test).reshape(-1,1)
+        predicted = model.predict(x_test).reshape(-1)
+        pScore.append(np.dot(predicted,y_test[:,i])/ly*10000)
+        npPredict=np.hstack((npPredict,predicted.reshape(-1,1)))
+        """
         testResult=testPredict(predicted,y_test[:,i],testRatePercent,judgeRight)
-        npPredict=np.hstack((npPredict,predicted))
         if npTestResult.size==0:
             npTestResult=testResult
         else:
             npTestResult=np.hstack((npTestResult,testResult))
     return (npPredict,npTestResult)
+    """
+    return (npPredict,pScore)
 
 def testPredict(predicted,y_test,testRatePercent=90,judgeRight=0.01):
     pcl=np.percentile(np.abs(predicted),range((100-testRatePercent),testRatePercent))
@@ -278,6 +284,7 @@ def tickToStdData(rawTickData,ListtimeSE,secTimeDiff):
 
 #step 2
 def getDailyInduData(dictPartStdData,dictCodeInfo,dictdailyPastAveAmnt,timeSpan):
+    global listErrInfo
     arrIndu=np.array(list(dictCodeInfo.values()))[:,1]
     maxNIndu=int(np.max(arrIndu)+0.1)
     minNIndu=int(np.min(arrIndu)+0.1)
@@ -294,6 +301,9 @@ def getDailyInduData(dictPartStdData,dictCodeInfo,dictdailyPastAveAmnt,timeSpan)
         intIndu=int(weiIndu[1]+0.1)
         arrStdData=np.array(dictPartStdData[code])
         aveAmnt=dictdailyPastAveAmnt[code]
+        if aveAmnt<0.01:
+            listErrInfo.append('no amount,code: '+code)
+            continue
         #industry index cal
         npDailyInduData[:,2*(intIndu-minNIndu)]=npDailyInduData[:,
             2*(intIndu-minNIndu)]+wei*arrStdData[:,0]
@@ -540,6 +550,11 @@ class AIHFIF:
             if len(dictPastAveAmnt)==0:
                 dictPastAveAmnt=getPastAveAmnt(dictDailyAmnt,self.nDayAverage,
                         listCode,strDate,strEDate)
+                avgAmntFile=os.path.join(self.workPath,'cfg',filename)
+                if not os.path.exists(avgAmntFile):
+                    os.makedirs(avgAmntFile)
+                avgAmntFile=os.path.join(avgAmntFile,'avgAmnt_'+filename+'.csv')
+                pd.DataFrame.from_dict(dictPastAveAmnt[intLED], orient='index').to_csv(avgAmntFile)
             for nFlag in dictStdData.keys():
                 induDataFile=os.path.join(outPath,strDate+'_'+nFlag+'.csv')
                 dictPartStdData=dictStdData[nFlag]
@@ -649,22 +664,33 @@ class AIHFIF:
         ny=np.array(self.minuteYData)*toInt(60/self.timeSpan)
         return (nDailyData,nx,ny)
     
-    def TrainModel(self):
+    def TrainModel(self,nRepeat=1,isNewTrain=False,batchSize=1000):
         listModelFile=self._GetModelFile_()
         normDataPath=self._GetNormDataPath_()
         xNormData=np.load(os.path.join(normDataPath,'normTrainData.npy'))
+        normTestData=np.load(os.path.join(normDataPath,'normTestData.npy'))
         nDailyData,nx,ny=self._getModelParam_()
-        for iy in range(len(ny)):
-            modelfile=listModelFile[iy]
-            if os.path.exists(modelfile):
-                print('Load TrainModel...'+modelfile.split('\\')[-1])
-                model=models.load_model(modelfile,custom_objects={'myLoss': myLoss})
-            else:
-                print('Start TrainModel...'+modelfile)
-                model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.actFunction)
-            trainRNNModel(model,xNormData,nDailyData,nx,ny,iy)
-            model.save(modelfile)
-    
+        xTest,yTest=getTensorData(normTestData,nDailyData,nx,ny)
+        listPScore=[]
+        for nr in range(nRepeat):
+            listModel=[]
+            for iy in range(len(ny)):
+                modelfile=listModelFile[iy]
+                mf=modelfile.split('\\')[-1].replace('model_cfg_','').replace('.h5','')
+                if os.path.exists(modelfile) and not isNewTrain:
+                    print('Load TrainModel...'+mf)
+                    model=models.load_model(modelfile,custom_objects={'myLoss': myLoss})
+                else:
+                    print('Create TrainModel...'+mf)
+                    model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.actFunction)
+                trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize)
+                model.save(modelfile)
+                listModel.append(model)
+            predict,pScore=RNNTest(listModel,xTest,yTest)
+            self.saveTempFile('predict.',predict,self.minuteXData,self.minuteYData,self.actFunction)
+            listPScore.append(pScore)
+        return np.round(listPScore)
+            
     def saveTempFile(self,fStr,npPredict,nGRU,nDense,actFunct):
         predictName=getSaveName(fStr,nGRU,nDense,actFunct)
         tempDataPath=self._GetTempDataPath_()
@@ -675,7 +701,7 @@ class AIHFIF:
             i+=1
             fileName=mfileName+'_'+str(i)+'.csv'
         np.savetxt(os.path.join(tempDataPath,fileName),npPredict,fmt="%.4f",delimiter=',')
-        
+        """
     def saveTestResultFile(self,listTestResult,nGRU,nDense,actFunct):
         testResultName=getTestResultName(nGRU,nDense,actFunct)
         tempDataPath=self._GetTempDataPath_()
@@ -690,7 +716,7 @@ class AIHFIF:
             for i in range(1,len(listTestResult)):
                 nptr=np.hstack((nptr,listTestResult[i]))
         np.savetxt(os.path.join(tempDataPath,fileName),nptr,fmt="%.4f",delimiter=',')
-    
+            
     def TestModel(self):
         print('Start TestModel...')
         listModelfile=self._GetModelFile_()
@@ -701,9 +727,10 @@ class AIHFIF:
         normTestData=np.load(os.path.join(normDataPath,'normTestData.npy'))
         xTest,yTest=getTensorData(normTestData,*self._getModelParam_())
         predict,testResult=RNNTest(listModel,xTest,yTest)
-        self.saveTempFile('testResult.',testResult,self.minuteXData,self.minuteYData,self.actFunction)
+        #self.saveTempFile('testResult.',testResult,self.minuteXData,self.minuteYData,self.actFunction)
         self.saveTempFile('predict.',predict,self.minuteXData,self.minuteYData,self.actFunction)
-        
+        return testResult
+        """  
     def collectAllData(self,strSDate='19000101',strEDate='99990101'):
         self.updateStdData(strSDate,strEDate)
         self.updateAmntByRaw(strSDate,strEDate)
@@ -714,25 +741,19 @@ class AIHFIF:
 if __name__=='__main__':
     gtime = time.time()
     #np.seterr(divide='ignore',invalid='ignore')
+    listErrInfo=[]
     print('Start Running...')
-    #build up
     workPath='F:\\草稿\\HFI_Model'
-    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
+    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
-    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
+    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
         #cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
         cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
-    dictCodeInfo=HFIF_Model.dictCodeInfo
-    #collect data
     #HFIF_Model.collectAllData()
-    #cal
-    
-    #.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
+    #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
     #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-    for i in range(10):
-        HFIF_Model.TrainModel()
-        HFIF_Model.TestModel()
+    listPScore=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
