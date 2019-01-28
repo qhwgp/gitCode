@@ -21,7 +21,7 @@ fileList=[]
 listStatus=repo.git.status().split('\n')
 for strInfo in listStatus:
     if '\t' in strInfo:
-        fileList.append(strInfo.replace('\t','').replace('modified:   ','').replace('deleted:   ',''))
+        fileList.append(strInfo.replace('\t','').replace('modified:   ',''))
 if fileList:
     repo.index.add(fileList)
     repo.index.commit(strUpdateInfo)
