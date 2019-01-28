@@ -36,7 +36,7 @@ def getTSAvgAmnt(pdAvgAmntFile):
     global dictTSAvgAmnt,timeSpan
     pdAvgAmnt=pd.read_csv(pdAvgAmntFile,header=0,index_col=0,engine='python')
     for code in pdAvgAmnt.index:
-        dictTSAvgAmnt[code]=pdAvgAmnt.loc[code][0]/(14400/timeSpan)
+        dictTSAvgAmnt[code]=int(pdAvgAmnt.loc[code][0]/(14400/timeSpan))
 
 def registerAllSymbol():
     global dataVendor,listForeFactor
@@ -112,6 +112,23 @@ class MSSQL:
         sql="update tblFundPricingParam set ff_1m_v=("+str(pm[0])+"),ff_2m_v=("+str(pm[1])+"),ff_3m_v=("+str(pm[2])+") where strategyName='"+sname+"'"
         self.cur.execute(sql)
         
+    def UpdateAllFF(self):
+        global listForeFactor
+        listUpdate=[]
+        lsn=[]
+        for i in range(3):
+            listUpdate.append('ff_'+str(i+1)+'m_v=case strategyName')
+        for ff in listForeFactor:
+            for strategyName in ff.listStrategyName:
+                lsn.append('\''+strategyName+'\'')
+                for i in range(3):
+                    listUpdate[i]+=' when \''+strategyName+'\' then '+str(ff.pm[i])
+        for i in range(3):
+            listUpdate[i]+=' end'
+        sql='update tblFundPricingParam set '+','.join(listUpdate)+' where strategyName in ('+','.join(lsn)+')'
+        
+        self.cur.execute(sql)
+        
         """
         #self.conn.commit()
     def CallProc(self,sname,p1m,p2m,p3m):
@@ -129,12 +146,15 @@ def TDFCallBack(pMarketdata):
 def MyNormData(normEvent):
     global listForeFactor,lock,sql
     isPush=normEvent.data
+    listPm=[]
     lock.acquire()
     try:
         for ff in listForeFactor:
             ff.CalPM()
-            if isPush:
-                pass
+            listPm.append(ff.pm)
+        print(datetime.datetime.now().strftime('%H:%M:%S'),*tuple(listPm))
+        if isPush:
+            sql.UpdateAllFF()
             #pm=dictForeFactor[key].pm
             #sql.UpdateFF(dictForeFactor[key].StrategyName,pm[0],pm[1],pm[2])
     finally:
@@ -241,7 +261,7 @@ if __name__ == '__main__':
     
     #SQL
     sql=MSSQL(*cfgSQL)
-    
+    """
     nConnect=0
     while not sql.Connect():
         print('SQL Connet Error: ',nConnect)
@@ -252,7 +272,7 @@ if __name__ == '__main__':
     eventManager.AddEventListener("quote",ReceiveQuote)
     eventManager.AddEventListener("normData",MyNormData)
     eventManager.Start()
-    """
+    
     w.SetMarketDataCallBack(TDFCallBack)
     dataVendor = w.WindMarketVendor("TDFConfig.ini", "TDFAPI25.dll")
     nConnect=0
@@ -264,9 +284,9 @@ if __name__ == '__main__':
     
     for i in range(20):
         eventManager.SendEvent(MyEvent("normData",False))
-        time.sleep(5)
+        time.sleep(timeSpan)
     while True:
         eventManager.SendEvent(MyEvent("normData",True))
-        time.sleep(5)
+        time.sleep(timeSpan)
     """
     
