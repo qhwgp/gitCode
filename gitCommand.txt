@@ -20,3 +20,6 @@ git add gitCommand.txt
 git add gitLearn.txt
 git commit -m "add some file"
 git push -u origin master
+
+import git
+repo.git.rm('test.csv')

@@ -13,6 +13,9 @@ try:
     repo.remote().pull()
     print('pull from gitHub OK.')
 except:
-    repo.git.stash()
-    repo.remote().pull()
-    print('save work and pull from gitHub OK.')
+    if input('change on local file.Overwrite?([n]/y)')=='y':
+        repo.git.stash()
+        repo.remote().pull()
+        print('save work and pull from gitHub OK.')
+    else:
+        print('Keep local file.')

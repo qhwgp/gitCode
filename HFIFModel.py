@@ -377,7 +377,8 @@ class AIHFIF:
         self._getCfg()
         
     def _getCfg(self):
-        data = xlrd.open_workbook(cfgFile)
+        cfgFilePath=os.path.join(self.workPath,'cfg',self.cfgFile)
+        data = xlrd.open_workbook(cfgFilePath)
         #page1
         sheetCodeInfo = data.sheets()[0]
         arrShares = sheetCodeInfo.col_values(1)[1:]
@@ -742,16 +743,16 @@ if __name__=='__main__':
     listErrInfo=[]
     print('Start Running...')
     workPath='F:\\草稿\\HFI_Model'
-    cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
-    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
-    #cfgFile='F:\\草稿\\HFI_Model\\cfg\\cfg_zz500_v11tan.xlsx'
+    listCfgFile=[]
+    listCfgFile.append('cfg_sz50_v331atan.xlsx')
+    listCfgFile.append('cfg_hs300_v22tan.xlsx')
+    listCfgFile.append('cfg_zz500_v11tan.xlsx')
+    cfgFile=listCfgFile[2]#0,1,2
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
-        #cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_hs300_v22tan.xlsx'
-        cfgFile='C:\\Users\\WAP\\Documents\\HFI_Model\\cfg\\cfg_sz50_v331atan.xlsx'
     HFIF_Model=AIHFIF(workPath,cfgFile)
-    #HFIF_Model.collectAllData()
+    HFIF_Model.collectAllData()
     #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
     #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-    listPScore=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
+    #listPScore=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))

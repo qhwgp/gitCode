@@ -12,7 +12,7 @@ Created on Wed Jun 28 09:18:19 2017
 @author: wap
 """
 
-import xlrd, threading,copy,datetime,os,pymssql#,time,sys
+import xlrd, threading,copy,datetime,os,pymssql,time
 from queue import Queue, Empty
 from threading import Thread
 #import WindTDFAPI as w
@@ -108,9 +108,11 @@ class MSSQL:
         except:
             return False
         
-    def UpdateFF(self,sname,p1m,p2m,p3m):
-        sql="update tblFundPricingParam set ff_1m_v=("+str(p1m)+"),ff_2m_v=("+str(p2m)+"),ff_3m_v=("+str(p3m)+") where strategyName='"+sname+"'"
+    def UpdateFF(self,sname,pm):
+        sql="update tblFundPricingParam set ff_1m_v=("+str(pm[0])+"),ff_2m_v=("+str(pm[1])+"),ff_3m_v=("+str(pm[2])+") where strategyName='"+sname+"'"
         self.cur.execute(sql)
+        
+        """
         #self.conn.commit()
     def CallProc(self,sname,p1m,p2m,p3m):
         self.cur.callproc('sp_update_params',(sname,p1m,p2m,p3m))
@@ -119,17 +121,20 @@ class MSSQL:
         sql="select  ff_1m_v,ff_2m_v,ff_3m_v from tblFundPricingParam where strategyName='QUOTER_510500'"
         self.cur.execute(sql)
         return self.cur.fetchone()
-
+    """
 
 def TDFCallBack(pMarketdata):
     eventManager.SendEvent(MyEvent("quote",pMarketdata))
 
 def MyNormData(normEvent):
     global listForeFactor,lock,sql
+    isPush=normEvent.data
     lock.acquire()
     try:
         for ff in listForeFactor:
             ff.CalPM()
+            if isPush:
+                pass
             #pm=dictForeFactor[key].pm
             #sql.UpdateFF(dictForeFactor[key].StrategyName,pm[0],pm[1],pm[2])
     finally:
@@ -168,10 +173,7 @@ class ForeFactor:
         arrCode = sheetCodeInfo.col_values(0)[1:]
         arrIndustry = sheetCodeInfo.col_values(2)[1:]
         self.nIndu=len(set(arrIndustry))
-        nRow=nXData
-        self.inputData=np.zeros((nRow,self.nIndu*2))
-        #self.lastInduData=np.zeros(self.nIndu*2)
-        #self.avgAmnt=np.zeros(self.nIndu)
+        self.inputData=np.zeros((nXData,self.nIndu*2))
         for i in range(len(arrCode)):
             self.dictCodeInfo[arrCode[i]]=[arrShares[i],arrIndustry[i]]
         arrCfg=data.sheets()[1].col_values(1)
@@ -186,7 +188,7 @@ class ForeFactor:
         getTSAvgAmnt(os.path.join(modelPath,'avgAmnt_'+filename+'.csv'))
     
     def CalPM(self):
-        global dictQuote,dictTSAvgAmnt
+        global dictQuote,dictTSAvgAmnt,nXData
         crow=np.zeros_like(self.lastInduData)
         npAveTSpanAmnt=np.zeros(self.nIndu)
         for (symbol,weiIndu) in self.dictCodeInfo.items():
@@ -208,14 +210,13 @@ class ForeFactor:
             crow[2*i]=(crow[2*i]/self.lastInduData[2*i]-1)*10000
             crow[2*i+1]=crow[2*i+1]/npAveTSpanAmnt[i]
         self.ndata=np.vstack((self.ndata[1:,:],crow))
+        self.lastInduData=crow
         #wap
-        p1m=self.model_1min.predict(self.ndata.reshape(1,self.nrow,self.ncolumn))[0,0]
-        p2m=self.model_2min.predict(self.ndata.reshape(1,self.nrow,self.ncolumn))[0,0]
-        p3m=self.model_3min.predict(self.ndata.reshape(1,self.nrow,self.ncolumn))[0,0]
-        ffvn=round(p1m*0.7+p2m*0.2+p3m*0.1,3)
-        self.forerate=round(self.forerate*0.7+ffvn*0.3,3)
-        self.pm=[round(p1m,3),round(p2m,3),round(p3m,3)]
-        print(datetime.datetime.now().strftime('%H:%M:%S'),self.StrategyName,round(p1m,3),round(p2m,3),round(p3m,3),ffvn,self.forerate)
+        xdata=self.ndata.reshape(1,nXData,self.nIndu*2)
+        for i in range(3):
+            self.pm[i]=self.listModel[i].predict(xdata)[0,0]
+        self.pm=np.round(self.pm,3)
+        print(datetime.datetime.now().strftime('%H:%M:%S'),self.pm)
         
  
         
@@ -240,7 +241,7 @@ if __name__ == '__main__':
     
     #SQL
     sql=MSSQL(*cfgSQL)
-    """
+    
     nConnect=0
     while not sql.Connect():
         print('SQL Connet Error: ',nConnect)
@@ -251,7 +252,7 @@ if __name__ == '__main__':
     eventManager.AddEventListener("quote",ReceiveQuote)
     eventManager.AddEventListener("normData",MyNormData)
     eventManager.Start()
-    
+    """
     w.SetMarketDataCallBack(TDFCallBack)
     dataVendor = w.WindMarketVendor("TDFConfig.ini", "TDFAPI25.dll")
     nConnect=0
@@ -259,7 +260,7 @@ if __name__ == '__main__':
         print("Error nConnect: ",nConnect)
         nConnect+=1
         time.sleep(5)
-    registerAllSymbol()
+    dataVendor.RegisterSymbol(set(dictTSAvgAmnt.keys()))
     
     for i in range(20):
         eventManager.SendEvent(MyEvent("normData",False))
