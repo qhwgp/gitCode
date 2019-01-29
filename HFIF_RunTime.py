@@ -15,21 +15,43 @@ Created on Wed Jun 28 09:18:19 2017
 import xlrd, threading,copy,datetime,os,pymssql,time
 from queue import Queue, Empty
 from threading import Thread
-#import WindTDFAPI as w
+import WindTDFAPI as w
 from keras import models,backend
 import numpy as np
 import pandas as pd
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
+def calPercentile(xValue,arrPercentile,st=0): #len(arrPercentile)=100,upscane
+    isfind=False
+    abv=abs(xValue)
+    for i in range(st,100):
+        if abv<(arrPercentile[i]+0.00001):
+            isfind=True
+            break
+    if isfind:
+        result=i/100
+    else:
+        result=1
+    return result*np.sign(xValue)
 
+def getNormInduData(xData,pclMatrix):
+    xShape=len(xData)
+    normInduData=np.zeros(xShape)
+    for j in range(xShape[1]):
+        arrPercentile=pclMatrix[:,j]
+        normInduData[j]=calPercentile(xData[j],arrPercentile)
+    return normInduData
+
+def btstr(btpara):
+    return str(btpara,encoding='utf-8')
 
 def myLoss(y_true, y_pred):
     return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
 
 def getCfgFareFactor(ffPath):
     cfgFile=os.path.join(ffPath,'cfgForeFactor.csv')
-    cfgData=tuple(map(str,np.loadtxt(cfgFile,dtype=str)))
+    cfgData=tuple(map(btstr,np.loadtxt(cfgFile,dtype=bytes)))
     return cfgData[:4],cfgData[4:]
 
 def getTSAvgAmnt(pdAvgAmntFile):
@@ -166,7 +188,7 @@ def ReceiveQuote(quoteEvent):
     lock.acquire()
     try:
         code=bytes.decode(dt.szWindCode)
-        dictQuote[code]=(dt.nTime/1000,dt.nMatch/10000,dt.iTurnover/1000000)
+        dictQuote[code]=(dt.nTime/1000,dt.nMatch/10000,dt.iTurnover/10000)
     finally:
         lock.release()
     
@@ -209,11 +231,13 @@ class ForeFactor:
     
     def CalPM(self):
         global dictQuote,dictTSAvgAmnt,nXData
-        crow=np.zeros_like(self.lastInduData)
+        crow=np.zeros(self.nIndu*2)
+        inputRow=np.zeros(self.nIndu*2)
         npAveTSpanAmnt=np.zeros(self.nIndu)
         for (symbol,weiIndu) in self.dictCodeInfo.items():
             if (symbol not in dictQuote) or (symbol not in dictTSAvgAmnt):
-                continue
+                print('no quote info: '+symbol)
+                return
             wei=weiIndu[0]
             intIndu=int(weiIndu[1]+0.1)
             lpri=dictQuote[symbol][1]
@@ -225,18 +249,20 @@ class ForeFactor:
             if lpri<0.01:
                 print('error quote info: '+symbol)
 
-        self.lastDictQuote=copy.deepcopy(self.dictquote)
+        if self.lastInduData.size==0:
+            self.lastInduData=crow
         for i in range(self.nIndu):
-            crow[2*i]=(crow[2*i]/self.lastInduData[2*i]-1)*10000
-            crow[2*i+1]=crow[2*i+1]/npAveTSpanAmnt[i]
-        self.ndata=np.vstack((self.ndata[1:,:],crow))
+            inputRow[2*i]=(crow[2*i]/self.lastInduData[2*i]-1)*10000
+            inputRow[2*i+1]=crow[2*i+1]/npAveTSpanAmnt[i]
+        inputRow=getNormInduData(inputRow,self.pclMatrix)
+        self.ndata=np.vstack((self.ndata[1:,:],inputRow))
         self.lastInduData=crow
         #wap
         xdata=self.ndata.reshape(1,nXData,self.nIndu*2)
         for i in range(3):
             self.pm[i]=self.listModel[i].predict(xdata)[0,0]
         self.pm=np.round(self.pm,3)
-        print(datetime.datetime.now().strftime('%H:%M:%S'),self.pm)
+        #print(datetime.datetime.now().strftime('%H:%M:%S'),self.pm)
         
  
         
@@ -261,7 +287,7 @@ if __name__ == '__main__':
     
     #SQL
     sql=MSSQL(*cfgSQL)
-    """
+
     nConnect=0
     while not sql.Connect():
         print('SQL Connet Error: ',nConnect)
@@ -282,11 +308,11 @@ if __name__ == '__main__':
         time.sleep(5)
     dataVendor.RegisterSymbol(set(dictTSAvgAmnt.keys()))
     
-    for i in range(20):
+    for i in range(200):
         eventManager.SendEvent(MyEvent("normData",False))
         time.sleep(timeSpan)
     while True:
         eventManager.SendEvent(MyEvent("normData",True))
         time.sleep(timeSpan)
-    """
+
     
