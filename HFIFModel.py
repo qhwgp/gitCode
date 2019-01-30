@@ -17,6 +17,14 @@ import numpy as np
 def toInt(fv):
     return int(fv+0.5)
 
+def btstr(btpara):
+    return str(btpara,encoding='utf-8')
+
+def getListCfgFile(ffPath):
+    cfgFile=os.path.join(ffPath,'cfgForeFactor.csv')
+    cfgData=list(map(btstr,np.loadtxt(cfgFile,dtype=bytes)))
+    return cfgData[4:]
+
 def csvToList(csvFile):
     resultList=[]
     try:
@@ -700,36 +708,7 @@ class AIHFIF:
             i+=1
             fileName=mfileName+'_'+str(i)+'.csv'
         np.savetxt(os.path.join(tempDataPath,fileName),npPredict,fmt="%.4f",delimiter=',')
-        """
-    def saveTestResultFile(self,listTestResult,nGRU,nDense,actFunct):
-        testResultName=getTestResultName(nGRU,nDense,actFunct)
-        tempDataPath=self._GetTempDataPath_()
-        mfileName=os.path.join(tempDataPath,testResultName)
-        i=0
-        fileName=mfileName+'_'+str(i)+'.csv'
-        while os.path.exists(fileName):
-            i+=1
-            fileName=mfileName+'_'+str(i)+'.csv'
-        nptr=listTestResult[0]
-        if len(listTestResult)>0:
-            for i in range(1,len(listTestResult)):
-                nptr=np.hstack((nptr,listTestResult[i]))
-        np.savetxt(os.path.join(tempDataPath,fileName),nptr,fmt="%.4f",delimiter=',')
-            
-    def TestModel(self):
-        print('Start TestModel...')
-        listModelfile=self._GetModelFile_()
-        listModel=[]
-        for modelfile in listModelfile:
-            listModel.append(models.load_model(modelfile,custom_objects={'myLoss': myLoss}))
-        normDataPath=self._GetNormDataPath_()
-        normTestData=np.load(os.path.join(normDataPath,'normTestData.npy'))
-        xTest,yTest=getTensorData(normTestData,*self._getModelParam_())
-        predict,testResult=RNNTest(listModel,xTest,yTest)
-        #self.saveTempFile('testResult.',testResult,self.minuteXData,self.minuteYData,self.actFunction)
-        self.saveTempFile('predict.',predict,self.minuteXData,self.minuteYData,self.actFunction)
-        return testResult
-        """  
+
     def collectAllData(self,strSDate='19000101',strEDate='99990101'):
         self.updateStdData(strSDate,strEDate)
         self.updateAmntByRaw(strSDate,strEDate)
@@ -743,16 +722,20 @@ if __name__=='__main__':
     listErrInfo=[]
     print('Start Running...')
     workPath='F:\\草稿\\HFI_Model'
-    listCfgFile=[]
+    if not os.path.exists(workPath):
+        workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
+    listCfgFile=getListCfgFile(workPath)
+    """[]
     listCfgFile.append('cfg_sz50_v331atan.xlsx')
     listCfgFile.append('cfg_hs300_v22tan.xlsx')
     listCfgFile.append('cfg_zz500_v11tan.xlsx')
     cfgFile=listCfgFile[2]#0,1,2
-    if not os.path.exists(workPath):
-        workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
-    HFIF_Model=AIHFIF(workPath,cfgFile)
-    HFIF_Model.collectAllData()
-    #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-    #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-    #listPScore=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
+    """
+    for cfgFile in listCfgFile:
+        print('programming: '+cfgFile)
+        HFIF_Model=AIHFIF(workPath,cfgFile)
+        HFIF_Model.collectAllData()
+        HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
+        HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+        listPScore=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))

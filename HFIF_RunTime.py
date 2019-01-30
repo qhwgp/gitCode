@@ -5,14 +5,7 @@ Created on Wed Jan 16 16:26:07 2019
 @author: WGP
 """
 
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Jun 28 09:18:19 2017
-
-@author: wap
-"""
-
-import xlrd, threading,copy,datetime,os,pymssql,time
+import xlrd, threading,datetime,os,pymssql,time
 from queue import Queue, Empty
 from threading import Thread
 import WindTDFAPI as w
@@ -38,7 +31,7 @@ def calPercentile(xValue,arrPercentile,st=0): #len(arrPercentile)=100,upscane
 def getNormInduData(xData,pclMatrix):
     xShape=len(xData)
     normInduData=np.zeros(xShape)
-    for j in range(xShape[1]):
+    for j in range(xShape):
         arrPercentile=pclMatrix[:,j]
         normInduData[j]=calPercentile(xData[j],arrPercentile)
     return normInduData
@@ -66,6 +59,7 @@ def registerAllSymbol():
     for ff in listForeFactor:
         codelist=codelist|set(ff.dictCodeInfo.keys())
     dataVendor.RegisterSymbol(codelist)
+    
 class EventManager:
     def __init__(self):
         self.__eventQueue = Queue()
@@ -107,8 +101,6 @@ class MyEvent:
     def __init__(self, Eventtype,Data):
         self.type_ = Eventtype      # 事件类型
         self.data = Data          # 字典用于保存具体的事件数据
-        
-
 
 class MSSQL:
 
@@ -148,19 +140,7 @@ class MSSQL:
         for i in range(3):
             listUpdate[i]+=' end'
         sql='update tblFundPricingParam set '+','.join(listUpdate)+' where strategyName in ('+','.join(lsn)+')'
-        
         self.cur.execute(sql)
-        
-        """
-        #self.conn.commit()
-    def CallProc(self,sname,p1m,p2m,p3m):
-        self.cur.callproc('sp_update_params',(sname,p1m,p2m,p3m))
-        #self.conn.commit()
-    def GetFF(self):
-        sql="select  ff_1m_v,ff_2m_v,ff_3m_v from tblFundPricingParam where strategyName='QUOTER_510500'"
-        self.cur.execute(sql)
-        return self.cur.fetchone()
-    """
 
 def TDFCallBack(pMarketdata):
     eventManager.SendEvent(MyEvent("quote",pMarketdata))
@@ -174,11 +154,10 @@ def MyNormData(normEvent):
         for ff in listForeFactor:
             ff.CalPM()
             listPm.append(ff.pm)
-        print(datetime.datetime.now().strftime('%H:%M:%S'),*tuple(listPm))
-        if isPush:
+        intNTime=int(datetime.datetime.now().strftime('%H%M%S'))
+        print(intNTime,*tuple(listPm))
+        if isPush and intNTime>93100 and intNTime<150000:
             sql.UpdateAllFF()
-            #pm=dictForeFactor[key].pm
-            #sql.UpdateFF(dictForeFactor[key].StrategyName,pm[0],pm[1],pm[2])
     finally:
         lock.release()
         
@@ -224,7 +203,7 @@ class ForeFactor:
         (filename,extension) = os.path.splitext(tempfilename)
         modelPath=os.path.join(self.workPath,filename)
         for i in range(3):
-            modelfile=os.path.join(modelPath,'model_'+filename+'_3min_'+str(i+1)+'min.h5')
+            modelfile=os.path.join(modelPath,'model_'+filename+'_1min_'+str(i+1)+'min.h5')
             self.listModel.append(models.load_model(modelfile,custom_objects={'myLoss': myLoss}))
         self.pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
         getTSAvgAmnt(os.path.join(modelPath,'avgAmnt_'+filename+'.csv'))
@@ -242,12 +221,13 @@ class ForeFactor:
             intIndu=int(weiIndu[1]+0.1)
             lpri=dictQuote[symbol][1]
             lamt=dictQuote[symbol][2]
-            crow[:,2*intIndu-2]+=wei*lpri
-            crow[:,2*intIndu-1]+=lamt
-            npAveTSpanAmnt[intIndu]+=dictTSAvgAmnt[symbol]
+            crow[2*intIndu-2]+=wei*lpri
+            crow[2*intIndu-1]+=lamt
+            npAveTSpanAmnt[intIndu-1]+=dictTSAvgAmnt[symbol]
         
             if lpri<0.01:
-                print('error quote info: '+symbol)
+                print('price 0: '+symbol)
+                continue
 
         if self.lastInduData.size==0:
             self.lastInduData=crow
@@ -255,16 +235,11 @@ class ForeFactor:
             inputRow[2*i]=(crow[2*i]/self.lastInduData[2*i]-1)*10000
             inputRow[2*i+1]=crow[2*i+1]/npAveTSpanAmnt[i]
         inputRow=getNormInduData(inputRow,self.pclMatrix)
-        self.ndata=np.vstack((self.ndata[1:,:],inputRow))
+        self.inputData=np.vstack((self.inputData[1:,:],inputRow))
         self.lastInduData=crow
-        #wap
-        xdata=self.ndata.reshape(1,nXData,self.nIndu*2)
         for i in range(3):
-            self.pm[i]=self.listModel[i].predict(xdata)[0,0]
+            self.pm[i]=self.listModel[i].predict(self.inputData.reshape(1,nXData,self.nIndu*2))[0,0]
         self.pm=np.round(self.pm,3)
-        #print(datetime.datetime.now().strftime('%H:%M:%S'),self.pm)
-        
- 
         
 if __name__ == '__main__':
     #global
@@ -277,7 +252,7 @@ if __name__ == '__main__':
     nXData=20
     
     #config
-    cfgPath='F:\\草稿\\HFI_Model'
+    cfgPath='D:\\CalForeFactor\\HFI_Model'
     if not os.path.exists(cfgPath):
         cfgPath='C:\\Users\\WAP\\Documents\\HFI_Model'
     cfgSQL,listCfgForeFactor=getCfgFareFactor(cfgPath)
@@ -308,11 +283,9 @@ if __name__ == '__main__':
         time.sleep(5)
     dataVendor.RegisterSymbol(set(dictTSAvgAmnt.keys()))
     
-    for i in range(200):
+    for i in range(30):
         eventManager.SendEvent(MyEvent("normData",False))
         time.sleep(timeSpan)
     while True:
         eventManager.SendEvent(MyEvent("normData",True))
         time.sleep(timeSpan)
-
-    
