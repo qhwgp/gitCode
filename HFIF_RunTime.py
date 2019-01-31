@@ -13,7 +13,7 @@ from keras import models,backend
 import numpy as np
 import pandas as pd
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+#os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 def calPercentile(xValue,arrPercentile,st=0): #len(arrPercentile)=100,upscane
     isfind=False
@@ -59,6 +59,7 @@ def registerAllSymbol():
     for ff in listForeFactor:
         codelist=codelist|set(ff.dictCodeInfo.keys())
     dataVendor.RegisterSymbol(codelist)
+    print('Register symbol, please wait...')
     
 class EventManager:
     def __init__(self):
@@ -150,13 +151,16 @@ def MyNormData(normEvent):
     isPush=normEvent.data
     listPm=[]
     lock.acquire()
+    intNTime=int(datetime.datetime.now().strftime('%H%M%S'))
+    if intNTime<91000 or intNTime>150000:
+        print('not trading time.')
+        return
     try:
         for ff in listForeFactor:
             ff.CalPM()
             listPm.append(ff.pm)
-        intNTime=int(datetime.datetime.now().strftime('%H%M%S'))
         print(intNTime,*tuple(listPm))
-        if isPush and intNTime>93100 and intNTime<150000:
+        if isPush and ((intNTime>93100 and intNTime<113000) or (intNTime>130100 and intNTime<150000)):
             sql.UpdateAllFF()
     finally:
         lock.release()
@@ -167,7 +171,7 @@ def ReceiveQuote(quoteEvent):
     lock.acquire()
     try:
         code=bytes.decode(dt.szWindCode)
-        dictQuote[code]=(dt.nTime/1000,dt.nMatch/10000,dt.iTurnover/10000)
+        dictQuote[code]=(dt.nTime/1000,dt.nMatch/10000,dt.iTurnover)
     finally:
         lock.release()
     
@@ -202,9 +206,12 @@ class ForeFactor:
         (filepath,tempfilename) = os.path.split(self.cfgFile)
         (filename,extension) = os.path.splitext(tempfilename)
         modelPath=os.path.join(self.workPath,filename)
+        testP=np.zeros((1,nXData,self.nIndu*2))
         for i in range(3):
             modelfile=os.path.join(modelPath,'model_'+filename+'_1min_'+str(i+1)+'min.h5')
-            self.listModel.append(models.load_model(modelfile,custom_objects={'myLoss': myLoss}))
+            model=models.load_model(modelfile,custom_objects={'myLoss': myLoss})
+            model.predict(testP)
+            self.listModel.append(model)
         self.pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
         getTSAvgAmnt(os.path.join(modelPath,'avgAmnt_'+filename+'.csv'))
     
@@ -214,9 +221,10 @@ class ForeFactor:
         inputRow=np.zeros(self.nIndu*2)
         npAveTSpanAmnt=np.zeros(self.nIndu)
         for (symbol,weiIndu) in self.dictCodeInfo.items():
-            if (symbol not in dictQuote) or (symbol not in dictTSAvgAmnt):
-                print('no quote info: '+symbol)
-                return
+            if (symbol not in dictQuote):# or (symbol not in dictTSAvgAmnt):
+                #print('np Symbol: '+ symbol)
+                #return
+                continue
             wei=weiIndu[0]
             intIndu=int(weiIndu[1]+0.1)
             lpri=dictQuote[symbol][1]
@@ -225,21 +233,24 @@ class ForeFactor:
             crow[2*intIndu-1]+=lamt
             npAveTSpanAmnt[intIndu-1]+=dictTSAvgAmnt[symbol]
         
-            if lpri<0.01:
-                print('price 0: '+symbol)
-                continue
-
+            #if lpri<0.01:
+                #print('price 0: '+symbol)
+                #continue
+        if crow[0]<1:
+            print('wait quote')
+            return
         if self.lastInduData.size==0:
             self.lastInduData=crow
         for i in range(self.nIndu):
             inputRow[2*i]=(crow[2*i]/self.lastInduData[2*i]-1)*10000
-            inputRow[2*i+1]=crow[2*i+1]/npAveTSpanAmnt[i]
+            inputRow[2*i+1]=(crow[2*i+1]-self.lastInduData[2*i+1])/npAveTSpanAmnt[i]
         inputRow=getNormInduData(inputRow,self.pclMatrix)
         self.inputData=np.vstack((self.inputData[1:,:],inputRow))
         self.lastInduData=crow
         for i in range(3):
             self.pm[i]=self.listModel[i].predict(self.inputData.reshape(1,nXData,self.nIndu*2))[0,0]
-        self.pm=np.round(self.pm,3)
+            #backend.clear_session()
+        self.pm=np.round(self.pm,2)
         
 if __name__ == '__main__':
     #global
@@ -282,10 +293,12 @@ if __name__ == '__main__':
         nConnect+=1
         time.sleep(5)
     dataVendor.RegisterSymbol(set(dictTSAvgAmnt.keys()))
-    
+    time.sleep(10)
     for i in range(30):
         eventManager.SendEvent(MyEvent("normData",False))
         time.sleep(timeSpan)
     while True:
         eventManager.SendEvent(MyEvent("normData",True))
         time.sleep(timeSpan)
+
+    

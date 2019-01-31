@@ -162,7 +162,7 @@ def RNNTest(listModel,x_test,y_test):#,testRatePercent=90,judgeRight=0.01):
     for i in range(len(listModel)):
         model=listModel[i]
         predicted = model.predict(x_test).reshape(-1)
-        pScore.append(np.dot(predicted,y_test[:,i])/ly*10000)
+        pScore.append(np.dot(predicted,y_test[:,i])/ly*7.2)
         npPredict=np.hstack((npPredict,predicted.reshape(-1,1)))
         """
         testResult=testPredict(predicted,y_test[:,i],testRatePercent,judgeRight)
@@ -731,11 +731,13 @@ if __name__=='__main__':
     listCfgFile.append('cfg_zz500_v11tan.xlsx')
     cfgFile=listCfgFile[2]#0,1,2
     """
+    #listCfgFile=['cfg_hs300_v22tan.xlsx']
+    dictPScore={}
     for cfgFile in listCfgFile:
         print('programming: '+cfgFile)
         HFIF_Model=AIHFIF(workPath,cfgFile)
         HFIF_Model.collectAllData()
         HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
         HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
-        listPScore=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
+        dictPScore[cfgFile]=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
