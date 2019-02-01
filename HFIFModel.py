@@ -162,7 +162,7 @@ def RNNTest(listModel,x_test,y_test):#,testRatePercent=90,judgeRight=0.01):
     for i in range(len(listModel)):
         model=listModel[i]
         predicted = model.predict(x_test).reshape(-1)
-        pScore.append(np.dot(predicted,y_test[:,i])/ly*7.2)
+        pScore.append(np.dot(predicted,y_test[:,i])/ly*720)
         npPredict=np.hstack((npPredict,predicted.reshape(-1,1)))
         """
         testResult=testPredict(predicted,y_test[:,i],testRatePercent,judgeRight)
@@ -174,26 +174,24 @@ def RNNTest(listModel,x_test,y_test):#,testRatePercent=90,judgeRight=0.01):
     """
     return (npPredict,pScore)
 
-def testPredict(predicted,y_test,testRatePercent=90,judgeRight=0.01):
-    pcl=np.percentile(np.abs(predicted),range((100-testRatePercent),testRatePercent))
-    nl=2*testRatePercent-100
-    arrSumValue=np.zeros([nl,2])
-    arrSumRight=np.zeros([nl,2])
-    arrSumN=np.zeros([nl,2])
-    for idata in range(len(predicted)):
-        for itrp in range(nl):
-            if predicted[idata]>pcl[itrp]:
-                arrSumN[itrp,0]+=1
-                arrSumValue[itrp,0]+=y_test[idata]
-                if y_test[idata]>judgeRight:
-                    arrSumRight[itrp,0]+=1
-            if predicted[idata]<-pcl[itrp]:
-                arrSumN[itrp,1]+=1
-                if y_test[idata]<-judgeRight:
-                    arrSumRight[itrp,1]+=1
-                    arrSumValue[itrp,1]+=y_test[idata]
-    arrPredictValue=arrSumValue/arrSumN
-    arrRightRate=arrSumRight/arrSumN
+def testPredict(listModel,normTestData,nDailyData,nx,ny):
+    lenDData=nDailyData-ny[-1]-1
+    ndday=int(normTestData.shape[0]/lenDData)
+    xData=[]
+    yData=np.array([])
+    for idday in range(ndday):
+        nStart=idday*lenDData
+        yday=(normTestData[(nStart+nx+ny[0]):(nStart+lenDData-1),-1]/normTestData[(nStart+nx):(nStart-lenDData+ny[0]-1),-1]-1)*10000
+        if yData.size==0:
+            yData=yday
+        else:
+            yData=np.hstack((yData,yday))
+        for i in range(nx,lenDData):
+            n=nStart+i
+            xData.append(normTestData[(n-nx):n,:-len(ny)-1])
+            #yData.append(normTestData[n,-len(ny)-1:])
+    xData=np.array(xData)
+    yData=np.array(yData)
     return np.hstack((arrPredictValue,arrRightRate,arrSumN,arrSumValue))
 
 #--------------Basic function end-------------
@@ -736,8 +734,8 @@ if __name__=='__main__':
     for cfgFile in listCfgFile:
         print('programming: '+cfgFile)
         HFIF_Model=AIHFIF(workPath,cfgFile)
-        HFIF_Model.collectAllData()
-        HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-        HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+        #HFIF_Model.collectAllData()
+        #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
+        #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
         dictPScore[cfgFile]=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
