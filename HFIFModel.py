@@ -177,22 +177,36 @@ def RNNTest(listModel,x_test,y_test):#,testRatePercent=90,judgeRight=0.01):
 def testPredict(listModel,normTestData,nDailyData,nx,ny):
     lenDData=nDailyData-ny[-1]-1
     ndday=int(normTestData.shape[0]/lenDData)
+    lenyday=lenDData-nx-ny[-1]
     xData=[]
-    yData=np.array([])
+    yData=[]
+    pScore=[]
+    yRawData=np.array([])
     for idday in range(ndday):
         nStart=idday*lenDData
-        yday=(normTestData[(nStart+nx+ny[0]):(nStart+lenDData-1),-1]/normTestData[(nStart+nx):(nStart-lenDData+ny[0]-1),-1]-1)*10000
-        if yData.size==0:
-            yData=yday
+        yIndex=normTestData[(nStart+nx):(nStart+lenDData),-1]
+        yday=np.zeros((len(ny),lenyday))
+        for iy in range(len(ny)):
+            yday[iy,:]=(yIndex[ny[iy]:]/yIndex[:-ny[iy]]-1)[:lenyday]*10000
+        if yRawData.size==0:
+            yRawData=yday.T
         else:
-            yData=np.hstack((yData,yday))
-        for i in range(nx,lenDData):
+            yRawData=np.vstack((yRawData,yday.T))
+        for i in range(nx,lenyday+nx):
             n=nStart+i
             xData.append(normTestData[(n-nx):n,:-len(ny)-1])
-            #yData.append(normTestData[n,-len(ny)-1:])
+            yData.append(normTestData[n,-len(ny)-1:])
     xData=np.array(xData)
     yData=np.array(yData)
-    return np.hstack((arrPredictValue,arrRightRate,arrSumN,arrSumValue))
+    ly=len(xData)
+    npPredict=np.hstack((yData,yRawData))
+    for i in range(len(listModel)):
+        model=listModel[i]
+        predicted = model.predict(xData).reshape(-1)
+        pScore.append(np.dot(predicted,yRawData[:,i])/ly*240)
+        npPredict=np.hstack((npPredict,predicted.reshape(-1,1)))
+    #yData=np.array(yData)
+    return (npPredict,pScore)
 
 #--------------Basic function end-------------
 
@@ -664,7 +678,7 @@ class AIHFIF:
         
     def _getModelParam_(self):
         ts=self.timeSE[0]
-        nDailyData=int((ts[1]-ts[0]).seconds/self.timeSpan)
+        nDailyData=int((ts[1]-ts[0]).seconds/self.timeSpan)#2000
         nx=toInt(self.minuteXData*60/self.timeSpan)
         ny=np.array(self.minuteYData)*toInt(60/self.timeSpan)
         return (nDailyData,nx,ny)
@@ -691,7 +705,8 @@ class AIHFIF:
                 trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize)
                 model.save(modelfile)
                 listModel.append(model)
-            predict,pScore=RNNTest(listModel,xTest,yTest)
+            #predict,pScore=RNNTest(listModel,xTest,yTest)
+            predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
             self.saveTempFile('predict.',predict,self.minuteXData,self.minuteYData,self.actFunction)
             listPScore.append(pScore)
         return np.round(listPScore)
@@ -718,24 +733,24 @@ if __name__=='__main__':
     gtime = time.time()
     #np.seterr(divide='ignore',invalid='ignore')
     listErrInfo=[]
+    splitDay='20190112'
     print('Start Running...')
     workPath='F:\\草稿\\HFI_Model'
     if not os.path.exists(workPath):
         workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
     listCfgFile=getListCfgFile(workPath)
-    """[]
+    """
     listCfgFile.append('cfg_sz50_v331atan.xlsx')
     listCfgFile.append('cfg_hs300_v22tan.xlsx')
     listCfgFile.append('cfg_zz500_v11tan.xlsx')
-    cfgFile=listCfgFile[2]#0,1,2
     """
-    #listCfgFile=['cfg_hs300_v22tan.xlsx']
+    #cfgFile=listCfgFile[0]#0,1,2
     dictPScore={}
     for cfgFile in listCfgFile:
         print('programming: '+cfgFile)
         HFIF_Model=AIHFIF(workPath,cfgFile)
         #HFIF_Model.collectAllData()
-        #HFIF_Model.calTensorData(strEDate='20190105')#Train Data,minus len(yTimes) rows
-        #HFIF_Model.calTensorData(isTrain=False,strSDate='20190106')#Test Data
+        HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
+        HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
         dictPScore[cfgFile]=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
