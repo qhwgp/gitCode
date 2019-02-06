@@ -765,5 +765,5 @@ if __name__=='__main__':
         #HFIF_Model.collectAllData()
         #HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
         #HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
-        dictPScore[cfgFile.replace('.xlsx','_m'+str[ix])]=HFIF_Model.TrainModel(nRepeat=5,isNewTrain=False,batchSize=1000)
+        dictPScore[cfgFile.replace('.xlsx','_m'+str(ix))]=HFIF_Model.TrainModel(nRepeat=5,isNewTrain=False,batchSize=1000)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
