@@ -6,6 +6,7 @@ version HFIF_v2.0
 """
 
 import time,csv,datetime,xlrd,os#,math
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from keras import models,backend,metrics
 from keras.layers import GRU
 import pandas as pd
@@ -126,7 +127,9 @@ def myLoss(y_true, y_pred):
 
 def buildRNNModel(xShape,actFlag='tanh'):
     model = models.Sequential()
-    model.add(GRU(1,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
+    model.add(GRU(xShape[1]*2,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
+                  dropout=0.1,recurrent_dropout=0.1,return_sequences=True))
+    model.add(GRU(1,activation=actFlag,recurrent_activation=actFlag,
                   dropout=0.1,recurrent_dropout=0.1,return_sequences=False))
     model.compile(loss=myLoss, optimizer="rmsprop",
                   metrics=[metrics.mean_squared_error])
@@ -380,7 +383,7 @@ def getNormInduData(xData,pclMatrix):
 #-----------Build HFIF Model Class------------
 
 class AIHFIF:
-    def __init__(self,workPath,cfgFile):
+    def __init__(self,workPath,cfgFile,nMinuteX=0):
         self.workPath=workPath
         self.cfgFile=cfgFile
         #default cfg
@@ -396,7 +399,7 @@ class AIHFIF:
         self.windIndexCode=''
         self.rawDataPath=''
         self.nDayAverage=0
-        self.minuteXData=0
+        self.minuteXData=nMinuteX
         self.minuteYData=0
         self.nGRU=0
         self.nDense=0
@@ -422,7 +425,7 @@ class AIHFIF:
         self.windIndexCode=arrCfg[2]
         self.rawDataPath=arrCfg[3]
         self.nDayAverage=int(arrCfg[4]+0.01)
-        self.minuteXData=int(arrCfg[5]+0.01)
+        self.minuteXData=list(map(int,arrCfg[5].split(',')))[self.minuteXData]
         self.minuteYData=list(map(int,arrCfg[6].split(',')))
         if type(arrCfg[7])==float:
             self.nGRU=[int(arrCfg[7])]
@@ -754,11 +757,12 @@ if __name__=='__main__':
     """
     cfgFile=listCfgFile[0]#0,1,2
     dictPScore={}
-    for cfgFile in listCfgFile:
+     #for cfgFile in listCfgFile:
+    for ix in range(3):
         print('programming: '+cfgFile)
-        HFIF_Model=AIHFIF(workPath,cfgFile)
+        HFIF_Model=AIHFIF(workPath,cfgFile,ix)
         #HFIF_Model.collectAllData()
         #HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
         #HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
-        dictPScore[cfgFile]=HFIF_Model.TrainModel(nRepeat=2,isNewTrain=False,batchSize=100)
+        dictPScore[cfgFile]=HFIF_Model.TrainModel(nRepeat=2,isNewTrain=False,batchSize=1000)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
