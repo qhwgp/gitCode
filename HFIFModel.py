@@ -8,7 +8,7 @@ version HFIF_v2.0
 import time,csv,datetime,xlrd,os#,math
 #os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from keras import models,backend,metrics
-from keras.layers import GRU
+from keras.layers import GRU,Dense
 import pandas as pd
 import numpy as np
 
@@ -127,10 +127,11 @@ def myLoss(y_true, y_pred):
 
 def buildRNNModel(xShape,actFlag='tanh'):
     model = models.Sequential()
-    model.add(GRU(xShape[1]*2,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
+    model.add(GRU(xShape[1],input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
                   dropout=0.1,recurrent_dropout=0.1,return_sequences=True))
-    model.add(GRU(1,activation=actFlag,recurrent_activation=actFlag,
+    model.add(GRU(xShape[1]*2,activation=actFlag,recurrent_activation=actFlag,
                   dropout=0.1,recurrent_dropout=0.1,return_sequences=False))
+    model.add(Dense(1,activation=actFlag))
     model.compile(loss=myLoss, optimizer="rmsprop",
                   metrics=[metrics.mean_squared_error])
     return model
@@ -764,5 +765,5 @@ if __name__=='__main__':
         #HFIF_Model.collectAllData()
         #HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
         #HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
-        dictPScore[cfgFile]=HFIF_Model.TrainModel(nRepeat=2,isNewTrain=False,batchSize=1000)
+        dictPScore[cfgFile.replace('.xlsx','_m'+str[ix])]=HFIF_Model.TrainModel(nRepeat=5,isNewTrain=False,batchSize=1000)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
