@@ -17,6 +17,9 @@ import numpy as np
 def toInt(fv):
     return int(fv+0.5)
 
+def toIntStr(fv):
+    return str(int(fv+0.5))
+
 def btstr(btpara):
     return str(btpara,encoding='utf-8')
 
@@ -97,7 +100,12 @@ def calPcl(xValue,arrPercentile,rng=[0,99]):
             return calPcl(xValue,arrPercentile,rng=[md,rng[1]])
 
 #Basic 4:
-def getSaveName(fStr,nGRU,nDense,actFlag):
+def getSaveName(pScore,nGRU,nDense,actFlag):
+    try:
+        strpScore='_'.join(list(map(toIntStr,pScore)))
+    except:
+        strpScore=toIntStr(pScore)
+    strpScore='ps.'+strpScore
     try:
         strnGRU='_'.join(list(map(str,nGRU)))
     except:
@@ -106,8 +114,8 @@ def getSaveName(fStr,nGRU,nDense,actFlag):
         strnDense='_'.join(list(map(str,nDense)))
     except:
         strnDense=str(nDense)
-    return fStr+strnGRU+'.'+strnDense+'.'+actFlag+'.'+\
-            datetime.datetime.now().strftime("%Y%m%d")
+    return strpScore+'.'+strnGRU+'.'+strnDense+'.'+\
+            datetime.datetime.now().strftime("%m%d")
     
 def getTestResultName(nGRU,nDense,actFlag):
     return 'testResult.'+'_'.join(list(map(str,nGRU)))+'.'+\
@@ -707,16 +715,16 @@ class AIHFIF:
                 listModel.append(model)
             #predict,pScore=RNNTest(listModel,xTest,yTest)
             predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
-            self.saveTempFile('predict.',predict,self.minuteXData,self.minuteYData,self.actFunction)
+            self.saveTempFile(pScore,predict,self.minuteXData,self.minuteYData,self.actFunction)
             listPScore.append(pScore)
         return np.round(listPScore)
             
-    def saveTempFile(self,fStr,npPredict,nGRU,nDense,actFunct):
-        predictName=getSaveName(fStr,nGRU,nDense,actFunct)
+    def saveTempFile(self,pScore,npPredict,mx,my,actFunct):
+        predictName=getSaveName(pScore,mx,my,actFunct)
         tempDataPath=self._GetTempDataPath_()
         mfileName=os.path.join(tempDataPath,predictName)
         i=0
-        fileName=mfileName+'_'+str(i)+'.csv'
+        fileName=mfileName+'.csv'
         while os.path.exists(fileName):
             i+=1
             fileName=mfileName+'_'+str(i)+'.csv'
@@ -744,13 +752,13 @@ if __name__=='__main__':
     listCfgFile.append('cfg_hs300_v22tan.xlsx')
     listCfgFile.append('cfg_zz500_v11tan.xlsx')
     """
-    #cfgFile=listCfgFile[0]#0,1,2
+    cfgFile=listCfgFile[0]#0,1,2
     dictPScore={}
     for cfgFile in listCfgFile:
         print('programming: '+cfgFile)
         HFIF_Model=AIHFIF(workPath,cfgFile)
         #HFIF_Model.collectAllData()
-        HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
-        HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
-        dictPScore[cfgFile]=HFIF_Model.TrainModel(nRepeat=10,isNewTrain=False,batchSize=100)
+        #HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
+        #HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
+        dictPScore[cfgFile]=HFIF_Model.TrainModel(nRepeat=2,isNewTrain=False,batchSize=100)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
