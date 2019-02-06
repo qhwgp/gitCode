@@ -6,7 +6,7 @@ version HFIF_v2.0
 """
 
 import time,csv,datetime,xlrd,os#,math
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from keras import models,backend,metrics
 from keras.layers import GRU
 import pandas as pd
