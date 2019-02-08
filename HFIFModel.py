@@ -7,10 +7,11 @@ version HFIF_v2.0
 
 import time,csv,datetime,xlrd,os#,math
 #os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-from keras import models,backend,metrics
+from keras import models,backend,callbacks
 from keras.layers import GRU,Dense
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 #--------------Basic function start-----------
 
@@ -125,19 +126,23 @@ def getTestResultName(nGRU,nDense,actFlag):
 def myLoss(y_true, y_pred):
     return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
 
+def myMetric(y_true, y_pred):
+    return backend.mean(y_pred*y_true, axis=-1)*10
+
 def buildRNNModel(xShape,actFlag='tanh'):
     model = models.Sequential()
-    model.add(GRU(xShape[1],input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
+    model.add(GRU(xShape[1]*3,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
                   dropout=0.1,recurrent_dropout=0.1,return_sequences=True))
     model.add(GRU(xShape[1]*2,activation=actFlag,recurrent_activation=actFlag,
+                  dropout=0.1,recurrent_dropout=0.1,return_sequences=True))
+    model.add(GRU(xShape[1],activation=actFlag,recurrent_activation=actFlag,
                   dropout=0.1,recurrent_dropout=0.1,return_sequences=False))
-    model.add(Dense(1,activation=actFlag))
-    model.compile(loss=myLoss, optimizer="rmsprop",
-                  metrics=[metrics.mean_squared_error])
+    model.add(Dense(1))
+    model.compile(loss=myLoss, optimizer="rmsprop",metrics=[myMetric])
     return model
 
 #Basic 5:
-def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize=10000):
+def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,xTest,yTest,batchSize=10000):
     print('Start fit RNN Model...')
     geneR=[]
     ndd=nDailyData-ny[-1]-1
@@ -147,8 +152,8 @@ def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize=10000):
             geneR.append(i*ndd+j)
     r = np.random.permutation(geneR) #shuffle
     spb=int(len(r)/batchSize)
-    model.fit_generator(generateTrainData(xNormData,nDailyData,
-                    nx,ny,iy,r,batchSize),steps_per_epoch=spb, epochs=1)
+    return model.fit_generator(generateTrainData(xNormData,nDailyData,nx,ny,iy,r,batchSize),
+            validation_data=(xTest,yTest),steps_per_epoch=spb,epochs=1).history
     
 def generateTrainData(xNormData,nDailyData,nx,ny,iy,r,batchSize):
     xData=[]
@@ -219,6 +224,58 @@ def testPredict(listModel,normTestData,nDailyData,nx,ny):
         npPredict=np.hstack((npPredict,predicted.reshape(-1,1)))
     #yData=np.array(yData)
     return (npPredict,pScore)
+
+def plot_history(training):
+    plt.plot(training.history['acc'])
+    plt.plot(training.history['val_acc'])
+    plt.title('model accuracy')
+    plt.xlabel('epoch')
+    plt.ylabel('accuracy')
+    plt.legend(['acc', 'val_acc'], loc='lower right')
+    plt.show()
+    plt.plot(training.history['loss'])
+    plt.plot(training.history['val_loss'])
+    plt.title('model loss')
+    plt.xlabel('epoch')
+    plt.ylabel('loss')
+    plt.legend(['loss', 'val_loss'], loc='lower right')
+    plt.show()
+    
+class LossHistory(callbacks.Callback):
+    def on_train_begin(self, logs={}):
+        self.losses = {'batch':[], 'epoch':[]}
+        self.accuracy = {'batch':[], 'epoch':[]}
+        self.val_loss = {'batch':[], 'epoch':[]}
+        self.val_acc = {'batch':[], 'epoch':[]}
+
+    def on_batch_end(self, batch, logs={}):
+        self.losses['batch'].append(logs.get('loss'))
+        self.accuracy['batch'].append(logs.get('myMetric'))
+        self.val_loss['batch'].append(logs.get('val_loss'))
+        self.val_acc['batch'].append(logs.get('val_myMetric'))
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.losses['epoch'].append(logs.get('loss'))
+        self.accuracy['epoch'].append(logs.get('myMetric'))
+        self.val_loss['epoch'].append(logs.get('val_loss'))
+        self.val_acc['epoch'].append(logs.get('val_myMetric'))
+
+    def loss_plot(self, loss_type):
+        iters = range(len(self.losses[loss_type]))
+        plt.figure()
+        # acc
+        plt.plot(iters, self.accuracy[loss_type], 'r', label='train acc')
+        # loss
+        plt.plot(iters, self.losses[loss_type], 'g', label='train loss')
+        # val_acc
+        plt.plot(iters, self.val_acc[loss_type], 'b', label='val acc')
+        # val_loss
+        plt.plot(iters, self.val_loss[loss_type], 'k', label='val loss')
+        plt.grid(True)
+        plt.xlabel(loss_type)
+        plt.ylabel('acc-loss')
+        plt.legend(loc="upper right")
+        plt.show()
 
 #--------------Basic function end-------------
 
@@ -695,7 +752,8 @@ class AIHFIF:
         ny=np.array(self.minuteYData)*toInt(60/self.timeSpan)
         return (nDailyData,nx,ny)
     
-    def TrainModel(self,nRepeat=1,isNewTrain=False,batchSize=1000):
+    def TrainModel(self,nRepeat=1,isNewTrain=False,batchSize=1024):
+        global history
         listModelFile=self._GetModelFile_()
         normDataPath=self._GetNormDataPath_()
         xNormData=np.load(os.path.join(normDataPath,'normTrainData.npy'))
@@ -703,25 +761,39 @@ class AIHFIF:
         nDailyData,nx,ny=self._getModelParam_()
         xTest,yTest=getTensorData(normTestData,nDailyData,nx,ny)
         listPScore=[]
-        for nr in range(nRepeat):
-            listModel=[]
-            for iy in range(len(ny)):
-                modelfile=listModelFile[iy]
-                mf=modelfile.split('\\')[-1].replace('model_cfg_','').replace('.h5','')
-                if os.path.exists(modelfile) and not isNewTrain:
-                    print('Load TrainModel...'+mf)
-                    model=models.load_model(modelfile,custom_objects={'myLoss': myLoss})
-                else:
-                    print('Create TrainModel...'+mf)
-                    model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.actFunction)
-                trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,batchSize)
-                model.save(modelfile)
-                listModel.append(model)
+        #listModel=[]
+        for iy in range(len(ny)):
+            
+            modelfile=listModelFile[iy]
+            mf=modelfile.split('\\')[-1].replace('model_cfg_','').replace('.h5','')
+            if os.path.exists(modelfile) and not isNewTrain:
+                print('Load TrainModel...'+mf)
+                model=models.load_model(modelfile,custom_objects={'myLoss': myLoss,'myMetric':myMetric})
+            else:
+                print('Create TrainModel...'+mf)
+                model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.actFunction)
+            dt=[1,0]
+            nr=0
+            npScore=np.zeros((nRepeat,2))
+            while nr<nRepeat:
+                ev=trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,xTest,yTest[:,iy],batchSize)
+                npScore[nr,0]=ev['val_loss'][0]
+                npScore[nr,1]=ev['val_myMetric'][0]
+                if dt[0]>ev['val_loss'][0]:
+                    dt[0]=ev['val_loss'][0]
+                    nr=-1
+                if dt[1]<ev['val_myMetric'][0]:
+                    dt[1]=ev['val_myMetric'][0]
+                    nr=-1
+                nr+=1
+                #listModel.append(model)
+            listPScore.append(npScore.mean(axis=0))
+            model.save(modelfile)
             #predict,pScore=RNNTest(listModel,xTest,yTest)
-            predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
-            self.saveTempFile(pScore,predict,self.minuteXData,self.minuteYData,self.actFunction)
-            listPScore.append(pScore)
-        return np.round(listPScore)
+            #predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
+            #self.saveTempFile(pScore,predict,self.minuteXData,self.minuteYData,self.actFunction)
+            
+        return np.array(listPScore)
             
     def saveTempFile(self,pScore,npPredict,mx,my,actFunct):
         predictName=getSaveName(pScore,mx,my,actFunct)
@@ -746,6 +818,7 @@ if __name__=='__main__':
     #np.seterr(divide='ignore',invalid='ignore')
     listErrInfo=[]
     splitDay='20190112'
+    
     print('Start Running...')
     workPath='F:\\草稿\\HFI_Model'
     if not os.path.exists(workPath):
@@ -765,5 +838,5 @@ if __name__=='__main__':
         #HFIF_Model.collectAllData()
         #HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
         #HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
-        dictPScore[cfgFile.replace('.xlsx','_m'+str(ix))]=HFIF_Model.TrainModel(nRepeat=5,isNewTrain=False,batchSize=1000)
+        dictPScore[cfgFile.replace('.xlsx','_mx'+str(ix))]=HFIF_Model.TrainModel(nRepeat=2,isNewTrain=False,batchSize=4096)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
