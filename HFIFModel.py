@@ -129,21 +129,21 @@ def myLoss(y_true, y_pred):
 def myMetric(y_true, y_pred):
     return backend.mean(y_pred*y_true, axis=-1)*10
 
-def buildRNNModel(xShape,actFlag='tanh'):
+def buildRNNModel(xShape,actFlag='tanh',doRate=0.1):
     model = models.Sequential()
     model.add(GRU(xShape[1]*3,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
-                  dropout=0.1,recurrent_dropout=0.1,return_sequences=True))
+                  dropout=doRate,recurrent_dropout=doRate,return_sequences=True))
     model.add(GRU(xShape[1]*2,activation=actFlag,recurrent_activation=actFlag,
-                  dropout=0.1,recurrent_dropout=0.1,return_sequences=True))
+                  dropout=doRate,recurrent_dropout=doRate,return_sequences=True))
     model.add(GRU(xShape[1],activation=actFlag,recurrent_activation=actFlag,
-                  dropout=0.1,recurrent_dropout=0.1,return_sequences=False))
+                  dropout=doRate,recurrent_dropout=doRate,return_sequences=False))
     model.add(Dense(1))
     model.compile(loss=myLoss, optimizer="rmsprop",metrics=[myMetric])
     return model
 
 #Basic 5:
 def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,xTest,yTest,batchSize=10000):
-    print('Start fit RNN Model...')
+    #print('Start fit RNN Model...')
     geneR=[]
     ndd=nDailyData-ny[-1]-1
     nday=int(xNormData.shape[0]/ndd)
