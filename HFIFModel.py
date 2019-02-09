@@ -5,13 +5,13 @@ version HFIF_v2.0
 @author: wap
 """
 
-import time,csv,datetime,xlrd,os#,math
+import time,csv,datetime,xlrd,os,sys
 #os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-from keras import models,backend,callbacks
+from keras import models,backend
 from keras.layers import GRU,Dense
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 #--------------Basic function start-----------
 
@@ -29,6 +29,16 @@ def getListCfgFile(ffPath):
     cfgFile=os.path.join(ffPath,'cfgForeFactor.csv')
     cfgData=list(map(btstr,np.loadtxt(cfgFile,dtype=bytes)))
     return cfgData[4:]
+
+def getRunCfg(wPath):
+    dictCfg={}
+    cfgFilePath=os.path.join(wPath,'cfg','runCfg.xls')
+    data = xlrd.open_workbook(cfgFilePath).sheets()[0]
+    arrName=data.col_values(0)
+    arrCfg=data.col_values(1)
+    for i in range(len(arrName)):
+        dictCfg[arrName[i]]=arrCfg[i]
+    return dictCfg
 
 def csvToList(csvFile):
     resultList=[]
@@ -336,7 +346,6 @@ def tickToStdData(rawTickData,ListtimeSE,secTimeDiff):
 
 #step 2
 def getDailyInduData(dictPartStdData,dictCodeInfo,dictdailyPastAveAmnt,timeSpan):
-    global listErrInfo
     arrIndu=np.array(list(dictCodeInfo.values()))[:,1]
     maxNIndu=int(np.max(arrIndu)+0.1)
     minNIndu=int(np.min(arrIndu)+0.1)
@@ -354,7 +363,6 @@ def getDailyInduData(dictPartStdData,dictCodeInfo,dictdailyPastAveAmnt,timeSpan)
         arrStdData=np.array(dictPartStdData[code])
         aveAmnt=dictdailyPastAveAmnt[code]
         if aveAmnt<0.01:
-            listErrInfo.append('no amount,code: '+code)
             continue
         #industry index cal
         npDailyInduData[:,2*(intIndu-minNIndu)]=npDailyInduData[:,
@@ -401,6 +409,33 @@ def getNormInduData(xData,pclMatrix):
 
 #----------Model step function end------------
 
+class clsRunCfg:
+    def __init__(self,workPath):
+        self.workPath=workPath
+        self.splitDay=''
+        self.calFile=[]
+        self.isCollectAllData=False
+        self.isCalTensorData=False
+        self.nRepeat=2
+        self.isNewTrain=False
+        self.batchSize=1024
+        self._getCfg()
+        
+    def _getCfg(self):
+        cfgFilePath=os.path.join(self.workPath,'cfg','runCfg.xls')
+        data = xlrd.open_workbook(cfgFilePath).sheets()[0]
+        arrCfg=data.col_values(1)
+        self.splitDay=arrCfg[0]
+        self.calFile=list(map(int,arrCfg[1].split(',')))
+        if arrCfg[2]=='T':
+            self.isCollectAllData=True
+        if arrCfg[3]=='T':
+            self.isCalTensorData=True
+        self.nRepeat=int(arrCfg[4])
+        if arrCfg[5]=='T':
+            self.isNewTrain=True
+        self.batchSize=int(arrCfg[6])
+        
 #-----------Build HFIF Model Class------------
 
 class AIHFIF:
@@ -784,37 +819,45 @@ class AIHFIF:
             fileName=mfileName+'_'+str(i)+'.csv'
         np.savetxt(os.path.join(tempDataPath,fileName),npPredict,fmt="%.4f",delimiter=',')
 
-    def collectAllData(self,strSDate='19000101',strEDate='99990101'):
-        self.updateStdData(strSDate,strEDate)
-        self.updateAmntByRaw(strSDate,strEDate)
-        self.calInduData(strSDate,strEDate)#minus one row
+    def collectAllData(self,rCfg,strSDate='19000101',strEDate='99990101'):
+        if rCfg.isCollectAllData:
+            self.updateStdData(strSDate,strEDate)
+            self.updateAmntByRaw(strSDate,strEDate)
+            self.calInduData(strSDate,strEDate)#minus one row
+        if rCfg.isCalTensorData:
+            self.calTensorData(isTrain=True,strEDate=rCfg.splitDay)#Train Data,minus len(yTimes) rows
+            self.calTensorData(isTrain=False,strSDate=rCfg.splitDay)#Test Data
+        return self.TrainModel(nRepeat=rCfg.nRepeat,isNewTrain=rCfg.isNewTrain,
+                   batchSize=rCfg.batchSize)
         
 #---------------Build HFIF Model End--------
+        
+def runAllHFIFModel(workPath):
+    listCfgFile=getListCfgFile(workPath)
+    rCfg=clsRunCfg(workPath)
+    dictPScore={}
+    for ic in rCfg.calFile:
+        cfgFile=listCfgFile[ic]
+        for ix in range(3):
+            print('programming: '+cfgFile)
+            HFIF_Model=AIHFIF(workPath,cfgFile,ix)
+            dictPScore[cfgFile.replace('.xlsx','_mx'+str(ix))]=HFIF_Model.collectAllData(rCfg)
+    return dictPScore
 
+def createWorkPath():
+    listWorkPath=[sys.path[0]]
+    listWorkPath.append('F:\\草稿\\HFI_Model')
+    listWorkPath.append('C:\\Users\\WAP\\Documents\\HFI_Model')
+    listWorkPath.append('D:\\ForeFactor\\HFI_Model')
+    for wPath in listWorkPath:
+        if os.path.exists(os.path.join(wPath,'cfg')):
+            return wPath
+    return None
+    
 if __name__=='__main__':
     gtime = time.time()
-    #np.seterr(divide='ignore',invalid='ignore')
-    listErrInfo=[]
-    splitDay='20190112'
-    
     print('Start Running...')
-    workPath='F:\\草稿\\HFI_Model'
-    if not os.path.exists(workPath):
-        workPath='C:\\Users\\WAP\\Documents\\HFI_Model'
-    listCfgFile=getListCfgFile(workPath)
-    """
-    listCfgFile.append('cfg_sz50_v331atan.xlsx')
-    listCfgFile.append('cfg_hs300_v22tan.xlsx')
-    listCfgFile.append('cfg_zz500_v11tan.xlsx')
-    """
-    cfgFile=listCfgFile[0]#0,1,2
-    dictPScore={}
-     #for cfgFile in listCfgFile:
-    for ix in range(3):
-        print('programming: '+cfgFile)
-        HFIF_Model=AIHFIF(workPath,cfgFile,ix)
-        #HFIF_Model.collectAllData()
-        #HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
-        #HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
-        dictPScore[cfgFile.replace('.xlsx','_mx'+str(ix))]=HFIF_Model.TrainModel(nRepeat=2,isNewTrain=True,batchSize=1024)
+    workPath=createWorkPath()
+    print(workPath)
+    dictPScore=runAllHFIFModel(workPath)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
