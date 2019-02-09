@@ -136,16 +136,24 @@ def myLoss(y_true, y_pred):
 def myMetric(y_true, y_pred):
     return backend.mean(y_pred*y_true, axis=-1)*10
 
-def buildRNNModel(xShape,actFlag='tanh',doRate=0.23):
+def buildRNNModel(xShape,nGRU,actFlag='tanh',opt='nadam',doRate=0.23):
     model = models.Sequential()
-    model.add(GRU(xShape[1]*2,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
-                  dropout=doRate,recurrent_dropout=doRate,return_sequences=True))
-    model.add(GRU(xShape[1]*2,activation=actFlag,recurrent_activation=actFlag,
-                  dropout=doRate,recurrent_dropout=doRate,return_sequences=True))
-    model.add(GRU(xShape[1],activation=actFlag,recurrent_activation=actFlag,
-                  dropout=doRate,recurrent_dropout=doRate,return_sequences=False))
+    lenGRU=len(nGRU)
+    for i in range(lenGRU):
+        if i==0:
+            model.add(GRU(xShape[1]*nGRU[i],input_shape=xShape,activation=actFlag,
+                recurrent_activation=actFlag,dropout=doRate,
+                recurrent_dropout=doRate,return_sequences=True))
+        elif i==lenGRU-1:
+            model.add(GRU(xShape[1]*nGRU[i],activation=actFlag,
+                recurrent_activation=actFlag,dropout=doRate,
+                recurrent_dropout=doRate,return_sequences=False))
+        else:
+            model.add(GRU(xShape[1]*nGRU[i],activation=actFlag,
+                recurrent_activation=actFlag,dropout=doRate,
+                recurrent_dropout=doRate,return_sequences=True))
     model.add(Dense(1))
-    model.compile(loss=myLoss, optimizer="nadam",metrics=[myMetric])
+    model.compile(loss=myLoss, optimizer=opt,metrics=[myMetric])
     return model
 
 #Basic 5:
@@ -727,7 +735,7 @@ class AIHFIF:
                 model=models.load_model(modelfile,custom_objects={'myLoss': myLoss,'myMetric':myMetric})
             else:
                 print('Create TrainModel...'+mf)
-                model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.actFunction)
+                model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.nGRU,self.actFunction)
             dt=[1,0]
             nr=0
             npScore=np.zeros((nRepeat,2))
@@ -756,7 +764,7 @@ class AIHFIF:
     def saveLogFile(self,iy,npScore):
         tempDataPath=self._GetTempDataPath_()
         msg=[datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")]
-        msg.append(self.cfgFile.replace('cfg_','').replace('.xlsx',''))
+        msg.append(str(self.nGRU))
         msg.append(self.minuteXData)
         msg.append(self.minuteYData[iy])
         msg+=list(npScore)
