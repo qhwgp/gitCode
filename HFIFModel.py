@@ -75,6 +75,13 @@ def strToInt(strDate):
         lDate=strDate.split('/')
     return int(lDate[0])*10000+int(lDate[1])*100+int(lDate[2])
 
+def writeLog(logPath,msg):
+    logFile=os.path.join(logPath,'log.csv')
+    with open(logFile,'a',newline='') as f:
+        wrt=csv.writer(f)
+        wrt.writerow(msg)
+        f.close()
+
 #Basic 3:
 def calPercentile(xValue,arrPercentile,st=0): #len(arrPercentile)=100,upscane
     isfind=False
@@ -704,6 +711,7 @@ class AIHFIF:
         global history
         listModelFile=self._GetModelFile_()
         normDataPath=self._GetNormDataPath_()
+        
         xNormData=np.load(os.path.join(normDataPath,'normTrainData.npy'))
         normTestData=np.load(os.path.join(normDataPath,'normTestData.npy'))
         nDailyData,nx,ny=self._getModelParam_()
@@ -735,15 +743,29 @@ class AIHFIF:
                     nr=-1
                 nr+=1
             listModel.append(model)
-            listPScore.append(npScore.mean(axis=0))
+            npScore=np.round(npScore.mean(axis=0),4)
+            listPScore.append(npScore)
+            self.saveLogFile(iy,npScore)
             model.save(modelfile)
             #predict,pScore=RNNTest(listModel,xTest,yTest)
-            predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
-            self.saveTempFile(pScore,predict,self.minuteXData,self.minuteYData,self.actFunction)
+        predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
+        self.saveTempFile(pScore,predict)
             
-        return np.round(np.array(listPScore),4)
-            
-    def saveTempFile(self,pScore,npPredict,mx,my,actFunct):
+        return np.array(listPScore)
+    
+    def saveLogFile(self,iy,npScore):
+        tempDataPath=self._GetTempDataPath_()
+        msg=[datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")]
+        msg.append(self.cfgFile.replace('cfg_','').replace('.xlsx',''))
+        msg.append(self.minuteXData)
+        msg.append(self.minuteYData[iy])
+        msg+=list(npScore)
+        writeLog(tempDataPath,msg)
+      
+    def saveTempFile(self,pScore,npPredict):
+        mx=self.minuteXData
+        my=self.minuteYData
+        actFunct=self.actFunction
         predictName=getSaveName(pScore,mx,my,actFunct)
         tempDataPath=self._GetTempDataPath_()
         mfileName=os.path.join(tempDataPath,predictName)
@@ -786,5 +808,5 @@ if __name__=='__main__':
         #HFIF_Model.collectAllData()
         #HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
         #HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
-        dictPScore[cfgFile.replace('.xlsx','_mx'+str(ix))]=HFIF_Model.TrainModel(nRepeat=3,isNewTrain=True,batchSize=2048)
+        dictPScore[cfgFile.replace('.xlsx','_mx'+str(ix))]=HFIF_Model.TrainModel(nRepeat=2,isNewTrain=True,batchSize=1024)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
