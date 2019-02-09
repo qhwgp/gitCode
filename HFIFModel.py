@@ -853,10 +853,11 @@ def createWorkPath():
         if os.path.exists(os.path.join(wPath,'cfg')):
             return wPath
     return None
+
+#-------------------Run Process----------------
     
 if __name__=='__main__':
     gtime = time.time()
-    print('Start Running...')
     workPath=createWorkPath()
     dictPScore=runAllHFIFModel(workPath)
-    print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
+    print('\nOK.Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
