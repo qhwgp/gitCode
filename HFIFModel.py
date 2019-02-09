@@ -129,16 +129,16 @@ def myLoss(y_true, y_pred):
 def myMetric(y_true, y_pred):
     return backend.mean(y_pred*y_true, axis=-1)*10
 
-def buildRNNModel(xShape,actFlag='tanh',doRate=0.1):
+def buildRNNModel(xShape,actFlag='tanh',doRate=0.23):
     model = models.Sequential()
-    model.add(GRU(xShape[1]*3,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
+    model.add(GRU(xShape[1]*2,input_shape=xShape,activation=actFlag,recurrent_activation=actFlag,
                   dropout=doRate,recurrent_dropout=doRate,return_sequences=True))
     model.add(GRU(xShape[1]*2,activation=actFlag,recurrent_activation=actFlag,
                   dropout=doRate,recurrent_dropout=doRate,return_sequences=True))
     model.add(GRU(xShape[1],activation=actFlag,recurrent_activation=actFlag,
                   dropout=doRate,recurrent_dropout=doRate,return_sequences=False))
     model.add(Dense(1))
-    model.compile(loss=myLoss, optimizer="rmsprop",metrics=[myMetric])
+    model.compile(loss=myLoss, optimizer="nadam",metrics=[myMetric])
     return model
 
 #Basic 5:
@@ -224,58 +224,6 @@ def testPredict(listModel,normTestData,nDailyData,nx,ny):
         npPredict=np.hstack((npPredict,predicted.reshape(-1,1)))
     #yData=np.array(yData)
     return (npPredict,pScore)
-
-def plot_history(training):
-    plt.plot(training.history['acc'])
-    plt.plot(training.history['val_acc'])
-    plt.title('model accuracy')
-    plt.xlabel('epoch')
-    plt.ylabel('accuracy')
-    plt.legend(['acc', 'val_acc'], loc='lower right')
-    plt.show()
-    plt.plot(training.history['loss'])
-    plt.plot(training.history['val_loss'])
-    plt.title('model loss')
-    plt.xlabel('epoch')
-    plt.ylabel('loss')
-    plt.legend(['loss', 'val_loss'], loc='lower right')
-    plt.show()
-    
-class LossHistory(callbacks.Callback):
-    def on_train_begin(self, logs={}):
-        self.losses = {'batch':[], 'epoch':[]}
-        self.accuracy = {'batch':[], 'epoch':[]}
-        self.val_loss = {'batch':[], 'epoch':[]}
-        self.val_acc = {'batch':[], 'epoch':[]}
-
-    def on_batch_end(self, batch, logs={}):
-        self.losses['batch'].append(logs.get('loss'))
-        self.accuracy['batch'].append(logs.get('myMetric'))
-        self.val_loss['batch'].append(logs.get('val_loss'))
-        self.val_acc['batch'].append(logs.get('val_myMetric'))
-
-    def on_epoch_end(self, epoch, logs={}):
-        self.losses['epoch'].append(logs.get('loss'))
-        self.accuracy['epoch'].append(logs.get('myMetric'))
-        self.val_loss['epoch'].append(logs.get('val_loss'))
-        self.val_acc['epoch'].append(logs.get('val_myMetric'))
-
-    def loss_plot(self, loss_type):
-        iters = range(len(self.losses[loss_type]))
-        plt.figure()
-        # acc
-        plt.plot(iters, self.accuracy[loss_type], 'r', label='train acc')
-        # loss
-        plt.plot(iters, self.losses[loss_type], 'g', label='train loss')
-        # val_acc
-        plt.plot(iters, self.val_acc[loss_type], 'b', label='val acc')
-        # val_loss
-        plt.plot(iters, self.val_loss[loss_type], 'k', label='val loss')
-        plt.grid(True)
-        plt.xlabel(loss_type)
-        plt.ylabel('acc-loss')
-        plt.legend(loc="upper right")
-        plt.show()
 
 #--------------Basic function end-------------
 
@@ -761,7 +709,7 @@ class AIHFIF:
         nDailyData,nx,ny=self._getModelParam_()
         xTest,yTest=getTensorData(normTestData,nDailyData,nx,ny)
         listPScore=[]
-        #listModel=[]
+        listModel=[]
         for iy in range(len(ny)):
             
             modelfile=listModelFile[iy]
@@ -786,14 +734,14 @@ class AIHFIF:
                     dt[1]=ev['val_myMetric'][0]
                     nr=-1
                 nr+=1
-                #listModel.append(model)
+            listModel.append(model)
             listPScore.append(npScore.mean(axis=0))
             model.save(modelfile)
             #predict,pScore=RNNTest(listModel,xTest,yTest)
-            #predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
-            #self.saveTempFile(pScore,predict,self.minuteXData,self.minuteYData,self.actFunction)
+            predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
+            self.saveTempFile(pScore,predict,self.minuteXData,self.minuteYData,self.actFunction)
             
-        return np.array(listPScore)
+        return np.round(np.array(listPScore),4)
             
     def saveTempFile(self,pScore,npPredict,mx,my,actFunct):
         predictName=getSaveName(pScore,mx,my,actFunct)
@@ -838,5 +786,5 @@ if __name__=='__main__':
         #HFIF_Model.collectAllData()
         #HFIF_Model.calTensorData(isTrain=True,strEDate=splitDay)#Train Data,minus len(yTimes) rows
         #HFIF_Model.calTensorData(isTrain=False,strSDate=splitDay)#Test Data
-        dictPScore[cfgFile.replace('.xlsx','_mx'+str(ix))]=HFIF_Model.TrainModel(nRepeat=2,isNewTrain=False,batchSize=4096)
+        dictPScore[cfgFile.replace('.xlsx','_mx'+str(ix))]=HFIF_Model.TrainModel(nRepeat=3,isNewTrain=True,batchSize=2048)
     print('\nRunning Ok. Duration in minute: %0.2f minutes'%((time.time() - gtime)/60))
