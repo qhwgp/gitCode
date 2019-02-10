@@ -149,21 +149,26 @@ def myMetric(y_true, y_pred):
 def buildRNNModel(xShape,nGRU,actFlag='tanh',opt='nadam',doRate=0.23):
     model = models.Sequential()
     lenGRU=len(nGRU)
-    for i in range(lenGRU):
-        if i==0:
-            model.add(GRU(xShape[1]*nGRU[i],input_shape=xShape,activation=actFlag,
-                recurrent_activation=actFlag,dropout=doRate,
-                recurrent_dropout=doRate,return_sequences=True))
-        elif i==lenGRU-1:
-            model.add(GRU(xShape[1]*nGRU[i],activation=actFlag,
+    if lenGRU==1:
+        model.add(GRU(xShape[1]*nGRU[0],input_shape=xShape,activation=actFlag,
                 recurrent_activation=actFlag,dropout=doRate,
                 recurrent_dropout=doRate,return_sequences=False))
-        else:
-            model.add(GRU(xShape[1]*nGRU[i],activation=actFlag,
-                recurrent_activation=actFlag,dropout=doRate,
-                recurrent_dropout=doRate,return_sequences=True))
+    else:
+        for i in range(lenGRU):
+            if i==0:
+                model.add(GRU(xShape[1]*nGRU[i],input_shape=xShape,activation=actFlag,
+                    recurrent_activation=actFlag,dropout=doRate,
+                    recurrent_dropout=doRate,return_sequences=True))
+            elif i==lenGRU-1:
+                model.add(GRU(xShape[1]*nGRU[i],activation=actFlag,
+                    recurrent_activation=actFlag,dropout=doRate,
+                    recurrent_dropout=doRate,return_sequences=False))
+            else:
+                model.add(GRU(xShape[1]*nGRU[i],activation=actFlag,
+                    recurrent_activation=actFlag,dropout=doRate,
+                    recurrent_dropout=doRate,return_sequences=True))
     model.add(Dense(1))
-    model.compile(loss=myLoss, optimizer=opt,metrics=[myMetric])
+    model.compile(loss=myLoss,optimizer=opt,metrics=[myMetric])
     return model
 
 #Basic 5:
@@ -422,7 +427,7 @@ class clsRunCfg:
         self._getCfg()
         
     def _getCfg(self):
-        cfgFilePath=os.path.join(self.workPath,'cfg','runCfg.xls')
+        cfgFilePath=os.path.join(self.workPath,'runCfg.xls')
         data = xlrd.open_workbook(cfgFilePath).sheets()[0]
         arrCfg=data.col_values(1)
         self.splitDay=arrCfg[0]

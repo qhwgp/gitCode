@@ -6,6 +6,7 @@ Created on Wed Jan 16 16:26:07 2019
 """
 
 import xlrd, threading,datetime,os,pymssql,time
+#os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from queue import Queue, Empty
 from threading import Thread
 import WindTDFAPI as w
@@ -13,7 +14,7 @@ from keras import models,backend
 import numpy as np
 import pandas as pd
 
-#os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 
 def calPercentile(xValue,arrPercentile,st=0): #len(arrPercentile)=100,upscane
     isfind=False
@@ -41,6 +42,9 @@ def btstr(btpara):
 
 def myLoss(y_true, y_pred):
     return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
+
+def myMetric(y_true, y_pred):
+    return backend.mean(y_pred*y_true, axis=-1)*10
 
 def getCfgFareFactor(ffPath):
     cfgFile=os.path.join(ffPath,'cfgForeFactor.csv')
@@ -150,11 +154,11 @@ def MyNormData(normEvent):
     global listForeFactor,lock,sql
     isPush=normEvent.data
     listPm=[]
-    lock.acquire()
     intNTime=int(datetime.datetime.now().strftime('%H%M%S'))
     if intNTime<91000 or intNTime>150000:
         print('not trading time.')
         return
+    lock.acquire()
     try:
         for ff in listForeFactor:
             ff.CalPM()
@@ -209,7 +213,7 @@ class ForeFactor:
         testP=np.zeros((1,nXData,self.nIndu*2))
         for i in range(3):
             modelfile=os.path.join(modelPath,'model_'+filename+'_1min_'+str(i+1)+'min.h5')
-            model=models.load_model(modelfile,custom_objects={'myLoss': myLoss})
+            model=models.load_model(modelfile,custom_objects={'myLoss': myLoss,'myMetric':myMetric})
             model.predict(testP)
             self.listModel.append(model)
         self.pclMatrix=np.loadtxt(os.path.join(modelPath,'pclMatrix_'+filename+'.csv'),delimiter=',')
