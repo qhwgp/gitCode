@@ -41,7 +41,8 @@ def btstr(btpara):
     return str(btpara,encoding='utf-8')
 
 def myLoss(y_true, y_pred):
-    return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
+    #return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
+    return backend.mean(backend.abs((y_pred - y_true)*y_true), axis=-1)
 
 def myMetric(y_true, y_pred):
     return backend.mean(y_pred*y_true, axis=-1)*10

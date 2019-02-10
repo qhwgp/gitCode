@@ -7,7 +7,7 @@ version HFIF_v2.0
 
 import time,csv,datetime,xlrd,os,sys
 #os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-from keras import models,backend
+from keras import models,backend,callbacks
 from keras.layers import GRU,Dense
 import pandas as pd
 import numpy as np
@@ -141,7 +141,7 @@ def getTestResultName(nGRU,nDense,actFlag):
     '_'.join(list(map(str,nDense)))+'.'+actFlag+'.'+datetime.datetime.now().strftime("%Y%m%d")
 
 def myLoss(y_true, y_pred):
-    return backend.mean(backend.square((y_pred - y_true)*y_true), axis=-1)
+    return backend.mean(backend.abs((y_pred - y_true)*y_true), axis=-1)
 
 def myMetric(y_true, y_pred):
     return backend.mean(y_pred*y_true, axis=-1)*10
@@ -172,7 +172,7 @@ def buildRNNModel(xShape,nGRU,actFlag='tanh',opt='nadam',doRate=0.23):
     return model
 
 #Basic 5:
-def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,xTest,yTest,batchSize=10000):
+def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,xTest,yTest,batchSize=10000,nRepeat=5):
     #print('Start fit RNN Model...')
     geneR=[]
     ndd=nDailyData-ny[-1]-1
@@ -180,46 +180,32 @@ def trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,xTest,yTest,batchSize=1000
     for i in range(nday):
         for j in range(nx,ndd):
             geneR.append(i*ndd+j)
-    r = np.random.permutation(geneR) #shuffle
-    spb=int(len(r)/batchSize)
-    return model.fit_generator(generateTrainData(xNormData,nDailyData,nx,ny,iy,r,batchSize),
-            validation_data=(xTest,yTest),steps_per_epoch=spb,epochs=1).history
+     #shuffle
+    spb=int(len(geneR)/batchSize)
+    eStop=callbacks.EarlyStopping(monitor='val_loss',patience=nRepeat,
+                                  mode='min', restore_best_weights=True)
+    return model.fit_generator(generateTrainData(xNormData,nDailyData,nx,ny,iy,geneR,nRepeat,batchSize),
+            validation_data=(xTest,yTest),steps_per_epoch=spb,
+            callbacks=[eStop],epochs=nRepeat*nRepeat).history
     
-def generateTrainData(xNormData,nDailyData,nx,ny,iy,r,batchSize):
+def generateTrainData(xNormData,nDailyData,nx,ny,iy,geneR,nRepeat,batchSize):
     xData=[]
     yData=[]
-    i=0
-    for n in r:
-        i+=1
-        xData.append(xNormData[(n-nx):n,:-len(ny)])
-        yData.append(xNormData[n,iy-len(ny)])
-        if i%batchSize==batchSize-1:
-            xData=np.array(xData)
-            yData=np.array(yData)
-            yield (xData,yData)
-            xData=[]
-            yData=[]
+    for nrpt in range(nRepeat*nRepeat):
+        r = np.random.permutation(geneR)
+        i=0
+        for n in r:
+            i+=1
+            xData.append(xNormData[(n-nx):n,:-len(ny)])
+            yData.append(xNormData[n,iy-len(ny)])
+            if i%batchSize==batchSize-1:
+                xData=np.array(xData)
+                yData=np.array(yData)
+                yield (xData,yData)
+                xData=[]
+                yData=[]
     
 #Basic 6:
-def RNNTest(listModel,x_test,y_test):#,testRatePercent=90,judgeRight=0.01):
-    npPredict=y_test
-    #npTestResult=np.array([])
-    pScore=[]
-    ly=len(y_test)
-    for i in range(len(listModel)):
-        model=listModel[i]
-        predicted = model.predict(x_test).reshape(-1)
-        pScore.append(np.dot(predicted,y_test[:,i])/ly*720)
-        npPredict=np.hstack((npPredict,predicted.reshape(-1,1)))
-        """
-        testResult=testPredict(predicted,y_test[:,i],testRatePercent,judgeRight)
-        if npTestResult.size==0:
-            npTestResult=testResult
-        else:
-            npTestResult=np.hstack((npTestResult,testResult))
-    return (npPredict,npTestResult)
-    """
-    return (npPredict,pScore)
 
 def testPredict(listModel,normTestData,nDailyData,nx,ny):
     lenDData=nDailyData-ny[-1]-1
@@ -759,7 +745,6 @@ class AIHFIF:
         global history
         listModelFile=self._GetModelFile_()
         normDataPath=self._GetNormDataPath_()
-        
         xNormData=np.load(os.path.join(normDataPath,'normTrainData.npy'))
         normTestData=np.load(os.path.join(normDataPath,'normTestData.npy'))
         nDailyData,nx,ny=self._getModelParam_()
@@ -767,7 +752,6 @@ class AIHFIF:
         listPScore=[]
         listModel=[]
         for iy in range(len(ny)):
-            
             modelfile=listModelFile[iy]
             mf=modelfile.split('\\')[-1].replace('model_cfg_','').replace('.h5','')
             if os.path.exists(modelfile) and not isNewTrain:
@@ -776,9 +760,12 @@ class AIHFIF:
             else:
                 print('Create TrainModel...'+mf)
                 model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.nGRU,self.actFunction)
-            dt=[1,0]
-            nr=0
-            npScore=np.zeros((nRepeat,2))
+            #dt=[1,0]
+            #nr=0
+            #npScore=np.zeros((nRepeat,2))
+            ev=trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,
+                        xTest,yTest[:,iy],batchSize,nRepeat)
+            """
             while nr<nRepeat:
                 ev=trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,xTest,yTest[:,iy],batchSize)
                 npScore[nr,0]=ev['val_loss'][0]
@@ -790,15 +777,15 @@ class AIHFIF:
                     dt[1]=ev['val_myMetric'][0]
                     nr=-1
                 nr+=1
+            """
             listModel.append(model)
-            npScore=np.round(npScore.mean(axis=0),4)
+            npScore=np.round([ev['val_loss'][0],ev['val_myMetric'][0]])
             listPScore.append(npScore)
             self.saveLogFile(iy,npScore)
             model.save(modelfile)
-            #predict,pScore=RNNTest(listModel,xTest,yTest)
-        predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
-        self.saveTempFile(pScore,predict)
-            
+            backend.clear_session()
+        #predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
+        #self.saveTempFile(pScore,predict)
         return np.array(listPScore)
     
     def saveLogFile(self,iy,npScore):
