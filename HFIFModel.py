@@ -146,12 +146,12 @@ def myLoss(y_true, y_pred):
 def myMetric(y_true, y_pred):
     return backend.mean(y_pred*y_true, axis=-1)*10
 
-def myAvtivation(x):
+def myActivation(x):
     return activations.relu(x*0.5, alpha=0.00001, max_value=1.0, threshold=-1.0)
 
 def buildRNNModel(xShape,nGRU,actFlag='tanh',opt='nadam',doRate=0.23):
     model = models.Sequential()
-    actFlag=myAvtivation
+    actFlag=myActivation
     lenGRU=len(nGRU)
     if lenGRU==1:
         model.add(GRU(xShape[1]*nGRU[0],input_shape=xShape,activation=actFlag,
@@ -765,32 +765,20 @@ class AIHFIF:
             else:
                 print('Create TrainModel...'+mf)
                 model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.nGRU,self.actFunction)
-            #dt=[1,0]
-            #nr=0
-            #npScore=np.zeros((nRepeat,2))
+            npScore=np.zeros((nRepeat,2))
             ev=trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,
                         xTest,yTest[:,iy],batchSize,nRepeat)
-            """
-            while nr<nRepeat:
-                ev=trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,xTest,yTest[:,iy],batchSize)
-                npScore[nr,0]=ev['val_loss'][0]
-                npScore[nr,1]=ev['val_myMetric'][0]
-                if dt[0]>ev['val_loss'][0]:
-                    dt[0]=ev['val_loss'][0]
-                    nr=-1
-                if dt[1]<ev['val_myMetric'][0]:
-                    dt[1]=ev['val_myMetric'][0]
-                    nr=-1
-                nr+=1
-            """
             listModel.append(model)
-            npScore=np.round([ev['val_loss'][-1],ev['val_myMetric'][-1]],4)
+            npScore[:,0]=ev['val_loss'][-nRepeat:]
+            npScore[:,1]=ev['val_myMetric'][-nRepeat:]
+            npScore=np.round(np.mean(npScore,axis=1),4)
             listPScore.append(npScore)
             self.saveLogFile(iy,npScore)
             model.save(modelfile)
-            backend.clear_session()
-        #predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
-        #self.saveTempFile(pScore,predict)
+            
+        predict,pScore=testPredict(listModel,normTestData,nDailyData,nx,ny)
+        self.saveTempFile(pScore,predict)
+        backend.clear_session()
         return np.array(listPScore)
     
     def saveLogFile(self,iy,npScore):
