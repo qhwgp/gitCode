@@ -7,7 +7,7 @@ version HFIF_v2.0
 
 import time,csv,datetime,xlrd,os,sys
 #os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-from keras import models,backend,callbacks
+from keras import models,backend,callbacks,activations
 from keras.layers import GRU,Dense
 import pandas as pd
 import numpy as np
@@ -146,8 +146,12 @@ def myLoss(y_true, y_pred):
 def myMetric(y_true, y_pred):
     return backend.mean(y_pred*y_true, axis=-1)*10
 
+def myAvtivation(x):
+    return activations.relu(x*0.5, alpha=0.00001, max_value=1.0, threshold=-1.0)
+
 def buildRNNModel(xShape,nGRU,actFlag='tanh',opt='nadam',doRate=0.23):
     model = models.Sequential()
+    actFlag=myAvtivation
     lenGRU=len(nGRU)
     if lenGRU==1:
         model.add(GRU(xShape[1]*nGRU[0],input_shape=xShape,activation=actFlag,
@@ -756,7 +760,8 @@ class AIHFIF:
             mf=modelfile.split('\\')[-1].replace('model_cfg_','').replace('.h5','')
             if os.path.exists(modelfile) and not isNewTrain:
                 print('Load TrainModel...'+mf)
-                model=models.load_model(modelfile,custom_objects={'myLoss': myLoss,'myMetric':myMetric})
+                model=models.load_model(modelfile,custom_objects={'myLoss': myLoss,
+                                'myMetric':myMetric,'myActivation':myActivation})
             else:
                 print('Create TrainModel...'+mf)
                 model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.nGRU,self.actFunction)
