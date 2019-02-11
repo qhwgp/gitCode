@@ -771,7 +771,7 @@ class AIHFIF:
             listModel.append(model)
             npScore[:,0]=ev['val_loss'][-nRepeat:]
             npScore[:,1]=ev['val_myMetric'][-nRepeat:]
-            npScore=np.round(np.mean(npScore,axis=1),4)
+            npScore=np.round(np.mean(npScore,axis=0),4)
             listPScore.append(npScore)
             self.saveLogFile(iy,npScore)
             model.save(modelfile)
