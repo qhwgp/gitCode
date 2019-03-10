@@ -99,7 +99,8 @@ def generateTrainData(xNormData,nDailyData,nx,ny,iy,nIndu,geneR,nRepeat,batchSiz
         i=0
         for n in r:
             i+=1
-            xData.append(myFunc.toModelInput(xNormData[(n-nx):n,:-len(ny)],(2,nx,nIndu)))
+            #xData.append(myFunc.toModelInput(xNormData[(n-nx):n,:-len(ny)],(2,nx,nIndu)))
+            xData.append(xNormData[(n-nx):n,:-len(ny)])
             yData.append(xNormData[n,iy-len(ny)])
             if i%batchSize==batchSize-1:
                 xData=np.array(xData)

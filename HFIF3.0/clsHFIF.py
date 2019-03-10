@@ -148,7 +148,8 @@ def getTensorData(xNormData,nDailyData,nx,ny,nIndu):
     for idday in range(ndday):
         for i in range(nx,lenDData):
             n=idday*lenDData+i
-            xData.append(myFunc.toModelInput(xNormData[(n-nx):n,:-len(ny)-1],(2,nx,nIndu)))
+            #xData.append(myFunc.toModelInput(xNormData[(n-nx):n,:-len(ny)-1],(2,nx,nIndu)))
+            xData.append(xNormData[(n-nx):n,:-len(ny)-1])
             yData.append(xNormData[n,-len(ny)-1:])
     xData=np.array(xData)
     yData=np.array(yData)
@@ -501,9 +502,9 @@ class AIHFIF:
                 model=myModel.loadModel(modelfile)
             else:
                 print('Create TrainModel...'+mf)
-                #model=buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.nGRU,self.actFunction)
-                model=myModel.buildCNNModel((2,nx,self.nIndu),nHiddenLayers=config.nHiddenLayers,
-                                        filters=config.filters,kernel_size=config.kernel_size,opt=config.opt)
+                model=myModel.buildRNNModel((nx,xNormData.shape[1]-len(ny)),self.nGRU,self.actFunction)
+                #model=myModel.buildCNNModel((2,nx,self.nIndu),nHiddenLayers=config.nHiddenLayers,
+                                        #filters=config.filters,kernel_size=config.kernel_size,opt=config.opt)
             npScore=np.zeros((config.nRepeat,2))
             ev=myModel.trainRNNModel(model,xNormData,nDailyData,nx,ny,iy,
                         xTest,yTest[:,iy],self.nIndu,config.batchSize,config.nRepeat)

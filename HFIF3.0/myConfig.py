@@ -13,6 +13,7 @@ listCfgFile=['cfg_sz50_v331atan.xlsx',
              'cfg_hs300_v22tan.xlsx',
              'cfg_zz500_v11tan.xlsx']
 calFile=[0]
+nXData=2
 isCollectAllData=False
 isCalTensorData=False
 nRepeat=3

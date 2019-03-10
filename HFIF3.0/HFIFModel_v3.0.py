@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sat Dec 29 14:15:04 2018
-version HFIF_v2.0
+version HFIF_v3.0
 @author: wap
 """
 import os,myConfig
@@ -30,7 +30,7 @@ if __name__=='__main__':
     dictPScore={}
     for ic in myConfig.calFile:
         cfgFile=listCfgFile[ic]
-        for ix in range(3):
+        for ix in range(myConfig.nXData):
             print('programming: '+cfgFile)
             HFIF_Model=AIHFIF(workPath,cfgFile,ix)
             dictPScore[cfgFile.replace('.xlsx','_mx'+str(ix))]=HFIF_Model.collectAllData(myConfig)
